@@ -12,10 +12,11 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Inspired from: https://gist.github.com/cliffano/9868180
+# Improved and made compatible with Ansible v2
 
+# Worldpay specific
 # Made changes so  that only reports PASS or FAIL for each task, as csv format.
 # outputs in reports/ on current directory
-# This plugin is set specific for this auditing. and may not work for all cases. 
 
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
@@ -26,6 +27,8 @@ try:
 except ImportError:
     import json
 
+import time
+
 
 taskid=''
 
@@ -34,8 +37,38 @@ class CallbackModule(CallbackBase):
       self.taskid = taskname
 
     def csv_reporter(self, data,host):
-          f = open('reports/'+host+'.csv', 'a')
+          f = open('reports/'+host+'.txt', 'a')
           summary = open('reports/summary_report.csv', 'a')
+          #print (json.dumps(data,indent=4))
+          try:
+             module_name=data['invocation']["module_name"]
+          except:
+             module_name=None
+          if module_name == 'setup':
+             # this is only availble in setup task, so you use to wirte host details, whcih will be at the start
+             datetime=time.strftime("%Y-%m-%d %H:%M")
+             try:
+                ip=data['ansible_facts']['facter_ipaddress']
+             except:
+                ip='facter_ipaddress not found'
+
+             try:
+                fqdn=data['ansible_facts']['facter_fqdn']
+             except:
+                fqdn='facter_fqdn not found'
+
+             try:
+                osrel=data['ansible_facts']['facter_operatingsystemrelease']
+             except:
+                osrel='facter_operatingsystemrelease not found'
+             
+             try:
+               os=data['ansible_facts']['facter_operatingsystem']
+             except:
+               os='facter_operatingsystem not found'
+
+             f.write("\nDATE: {0}\nHost: {1}\nIP: {2}\nOS: {3} {4}\n============\n".format(datetime,fqdn,ip,os,osrel))
+          
           if type(data) == dict:
             status='UNKNOWN'
             output='UNKNOWN'
