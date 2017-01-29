@@ -7,3 +7,5 @@ Insipired by https://github.com/major/cis-rhel-ansible but instead of applying t
 
 In progress, code will appear here soon
 
+- Added section 1 level1 and level2 checks
+
