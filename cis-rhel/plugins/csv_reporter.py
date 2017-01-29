@@ -43,7 +43,7 @@ class CallbackModule(CallbackBase):
           try:
              module_name=data['invocation']["module_name"]
           except:
-             module_name=None
+             module_namr=None
           if module_name == 'setup':
              # this is only availble in setup task, so you use to wirte host details, whcih will be at the start
              datetime=time.strftime("%Y-%m-%d %H:%M")
@@ -76,10 +76,14 @@ class CallbackModule(CallbackBase):
             # set whichever value is available
             try:
               stdout=data['stdout']
+              if type(stdout) == unicode:
+                stdout = stdout.encode('ascii', 'replace')
             except:
               stdout=""
             try:
               stderr=data['stderr']
+              if type(stderr) == unicode:
+                stderr = stderr.encode('ascii', 'replace')
             except:
               stderr=""
             try:
@@ -88,6 +92,8 @@ class CallbackModule(CallbackBase):
               rc=''
             try:
               msg=data['msg']
+              if type(msg) == unicode:
+                msg = msg.encode('ascii', 'replace')
             except:
               msg=""
            
