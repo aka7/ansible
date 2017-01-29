@@ -9,3 +9,8 @@ In progress, code will appear here soon
 
 - Added section 1 level1 and level2 checks
 
+Example:
+add  hosts in test-hosts
+```
+ansible-playbook -i test-hosts playbook.yml --extra-vars="hosts=all" --tags=level2 -K -k
+```
