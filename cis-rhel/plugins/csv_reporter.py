@@ -14,9 +14,10 @@
 # Inspired from: https://gist.github.com/cliffano/9868180
 # Improved and made compatible with Ansible v2
 
-# Worldpay specific
-# Made changes so  that only reports PASS or FAIL for each task, as csv format.
-# outputs in reports/ on current directory
+# Specific changes mande
+# Made changes so that only reports PASS or FAIL for each task, as csv format. in summary_report.csv
+# creates seperate report for each hosts, hostname.txt. includes msg, stdout, or stderr
+# outputs in reports/
 
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
