@@ -12,7 +12,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Inspired from: https://gist.github.com/cliffano/9868180
-# Improved and made compatible with Ansible v2
+#
+# Made changes to it suites what we trying achieve for this pci audit
+# change to write the output to file.
+# summary of each task, pass or fail, or verify. 
+# writes output of each server in own file, log/${hostname}.txt and summary of all tasks in summary.csv
+# TODO: better gui type reporting based on the csv output, so can be shared with security team for review
 
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
