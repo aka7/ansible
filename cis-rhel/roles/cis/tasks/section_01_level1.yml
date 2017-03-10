@@ -18,7 +18,7 @@
     shell: grep "[[:space:]]/tmp[[:space:]]" /etc/fstab
     register: out_111
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -31,7 +31,7 @@
     failed_when: >
      'nodev' not in out_112.stdout
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -44,7 +44,7 @@
     failed_when: >
      'nosuid' not in out_113.stdout
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -57,7 +57,7 @@
     failed_when: >
      'noexec' not in out_114.stdout
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -68,7 +68,7 @@
     shell: grep "[[:space:]]/var[[:space:]]" /etc/fstab
     register: out_115
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -79,7 +79,7 @@
     shell:  grep -e "^/tmp[[:space:]]" /etc/fstab | grep /var/tmp 
     register: out_116
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -90,7 +90,7 @@
     shell: grep "[[:space:]]/var/log[[:space:]]" /etc/fstab
     register: out_117
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -101,7 +101,7 @@
     shell: grep "[[:space:]]/var/log/audit[[:space:]]" /etc/fstab
     register: out_118
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -112,7 +112,7 @@
     shell: grep "[[:space:]]/home[[:space:]]" /etc/fstab
     register: out_118
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -125,7 +125,7 @@
     failed_when: >
      'nodev' not in out_1110.stdout
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -134,6 +134,7 @@
 
   - name: 1.1.11 Add nodev Option to Removable Media Partitions (Not Scored)
     debug: msg="*** Not relevant."
+    changed_when: false
     tags:
       - scored
       - section1.1
@@ -142,6 +143,7 @@
 
   - name: 1.1.12 Add noexec Option to Removable Media Partitions (Not Scored)
     debug: msg="*** Not relevant."
+    changed_when: false
     tags:
       - notscored
       - section1.1
@@ -150,6 +152,7 @@
 
   - name: 1.1.13 Add nosuid Option to Removable Media Partitions (Not Scored)
     debug: msg="*** Not relevant."
+    changed_when: false
     tags:
       - notscored
       - section1.1
@@ -162,7 +165,7 @@
     failed_when: >
      'nodev' not in out_1114.stdout
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - section1.1
       - section1.1.14
@@ -175,7 +178,7 @@
     failed_when: >
      'nosuid' not in out_1115.stdout
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - section1.1
       - section1.1.15
@@ -188,7 +191,7 @@
     failed_when: >
      'noexec' not in out_1116.stdout
     ignore_errors: true
-    changed_when: true
+    changed_when: false
     tags:
       - section1.1
       - section1.1.16
