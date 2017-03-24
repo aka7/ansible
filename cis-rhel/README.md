@@ -5,9 +5,10 @@ This is an ansible playbook for auditing a system running Red Hat Enterprise Lin
 
 Insipired by https://github.com/major/cis-rhel-ansible but instead of applying the changes, this will just report if a system passes or fails for each task.
 
-In progress, code will appear here soon
+In progress, other sections will be added soon
 
 - Added section 1 level1 and level2 checks
+- Added section 2 level1 and level2 checks
 
 Example:
 add  hosts in test-hosts
