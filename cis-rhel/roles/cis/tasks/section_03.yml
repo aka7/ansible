@@ -1,5 +1,6 @@
 ---
 #
+# Copyright 2014 Major Hayden
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,12 +15,12 @@
 #   limitations under the License.
 #
 
-  - include: section_01.yml
-    tags: section1
+  - include: section_03_level1.yml
+    tags:
+      - section3
+      - level1
 
-  - include: section_02.yml
-    tags: section2
-  - include: section_03.yml
-    tags: section3
-  - include: section_04.yml
-    tags: section4
+  - include: section_03_level2.yml
+    tags:
+      - section3
+      - level2
