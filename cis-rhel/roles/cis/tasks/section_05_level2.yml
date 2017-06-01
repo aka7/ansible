@@ -158,7 +158,7 @@
       - section5.2.16
       - section5.2.17
 
-  - name: 5.2.4 - 5.2.17 Record Events That Modify User/Group Information (Scored)
+  - name: 5.2.4 - 5.2.17  Configure auditd Rules (Scored)
     debug:
       msg: "{{ auditout.results }}"
     changed_when: false
