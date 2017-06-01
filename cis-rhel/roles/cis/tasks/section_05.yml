@@ -1,5 +1,6 @@
 ---
 #
+#
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
 #   You may obtain a copy of the License at
@@ -13,11 +14,12 @@
 #   limitations under the License.
 #
 
-- hosts: "{{ nodes }}"
-  become: yes
-  vars_files:
-    - secret
-  roles:
-    - cis 
-  environment:
-    PATH: '/sbin:/bin:/usr/loca/bin:/usr/sbin:/usr/bin'
+  - include: section_05_level1.yml
+    tags:
+      - section5
+      - level1
+
+  - include: section_05_level2.yml
+    tags:
+      - section5
+      - level2

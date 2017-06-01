@@ -13,5 +13,5 @@ In progress, other sections will be added soon
 Example:
 add  hosts in test-hosts
 ```
-ansible-playbook -i test-hosts playbook.yml --extra-vars="hosts=all" --tags=level2 -K -k
+ansible-playbook -i test-hosts playbook.yml --extra-vars="nodes=all" --tags=level2 -K -k
 ```
