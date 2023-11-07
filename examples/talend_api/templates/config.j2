@@ -1,0 +1,23 @@
+VAULT_NAMESPACE={{ vault_namespace }}
+{% if ec2_tag_Environment == 'preprod'  or ec2_tag_Environment == 'prod' -%}
+VAULT_ADDR=https://vault.example.org:8200
+TAC_URL_BASE=talend-tac.{{ my_env }}.test.example.org/org.talend.administrator
+{% else -%}
+VAULT_ADDR=https://vaultnp.example.com:8200
+TAC_URL_BASE=talend-tac.{{ my_env }}.example.com/org.talend.administrator
+{% endif -%}
+{% if self_register_js -%}
+EC2_TAG_PROJECT={{ ec2_tag_Project }}
+EC2_TAG_ENVIRONMENT={{ ec2_tag_Environment }}
+EC2_TAG_PROGRAMME={{ ec2_tag_Programme }}
+# virtual server name in talend.
+TALEND_VS_NAME="vs_{{ ec2_tag_Project}}_{{ ec2_tag_Programme}}"
+
+# defautl talend ports
+COMMAND_PORT={{ talend_js_command_port }}
+FILE_PORT={{ talend_js_file_port }}
+MONITORING_PORT={{ talend_js_monitoring_port }}
+MESSAGE_PORT={{ talend_js_message_port }}
+TIMEOUT_UNKNOWN_STATE={{ talend_js_timeout_unknown_state }}
+TIMEZONE="{{ talend_js_timeoutzone }}"
+{% endif -%}

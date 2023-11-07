@@ -1,0 +1,33 @@
+---
+- name: copy jobserver registration scripts
+  copy:
+    src: bin/talend_register
+    dest: '{{  base_path }}/bin/talend_register'
+    mode: "0555"
+    owner: root
+    group: root
+
+- name: copy jobserver deregistration scripts
+  copy:
+    src: bin/talend_deregister
+    dest: '{{  base_path }}/bin/talend_deregister'
+    mode: "0555"
+    owner: root
+    group: root
+
+# TODO add systemd unit files
+
+- name: Create jobserver register service
+  copy:
+    src: "files/etc/{{ jobserver_reg_service }}.service"
+    dest: "/etc/systemd/system/{{ jobserver_reg_service }}.service"
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Enable and start jobserver reg service
+  systemd:
+    name: "{{ jobserver_reg_service }}"
+    daemon_reload: true
+    enabled: true
+    state: started

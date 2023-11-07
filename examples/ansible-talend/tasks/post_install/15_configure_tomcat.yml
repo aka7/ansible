@@ -1,0 +1,10 @@
+---
+- name: Mitigate log4j vulnerabilities in Tomcat (CVE-2021-045046 & CVE-2021-45105)
+  # Note: this may be removed once log4j has been patched
+  # See here: https://help.talend.com/r/EeTpT8r7xmeq1HtTGQBqGA/xjI7K_ftIc2h4gQL9S_CQw
+  lineinfile:
+    path: "{{ talend_tomcat_bin_path }}/setenv.sh"
+    insertafter: ^CATALINA_OPTS=
+    line: CATALINA_OPTS="$CATALINA_OPTS -Dlog4j2.formatMsgNoLookups=true"
+  notify:
+    - restart talend-tac

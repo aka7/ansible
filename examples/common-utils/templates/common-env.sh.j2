@@ -1,0 +1,5 @@
+# SETUP PS1
+export ENVIRONMENT="{{ ec2_tag_Environment | default('unknown')}}"
+PS1_DIR='${PWD/$HOME/\~}'
+PS1_SERVER='${USER}@${HOSTNAME%%.*}'
+export PS1='\[\e[0;37m\][${ENVIRONMENT^^}] \[\e[0;92m\]$([[ -n ${PS1_SERVER} ]] && eval echo \"${PS1_SERVER} \")\[\e[0;93m\]$(eval echo ${PS1_DIR})> \[\e[0m\]'

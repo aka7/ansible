@@ -1,0 +1,56 @@
+---
+prerun: true
+dependency:
+  name: galaxy
+  enabled: true
+driver:
+  name: docker
+platforms:
+  - name: talend_api
+    image: artifactory.example.com/base-rhel8-init
+    pre_build_image: true
+    command: /usr/sbin/init
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    privileged: true
+provisioner:
+  name: ansible
+scenario:
+  create_sequence:
+    - dependency
+    - create
+    - prepare
+  check_sequence:
+    - dependency
+    - destroy
+    - create
+    - prepare
+    - converge
+    - check
+    - destroy
+  converge_sequence:
+    - dependency
+    - create
+    - prepare
+    - converge
+  destroy_sequence:
+    - dependency
+    - destroy
+  test_sequence:
+    - lint
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - verify
+    - destroy
+verifier:
+  name: testinfra
+  options:
+   verbose: true
+lint: |
+  set -e
+  yamllint .
+  ansible-lint .

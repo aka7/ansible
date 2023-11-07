@@ -1,0 +1,30 @@
+---
+- name: Add new task
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"saveEsbTask"' + ',"taskName":"' + item.name + '",' +
+      '"repository":"' + deploy_task_repository + '","featureUrl":"' + item.url_prefix + item.version + item.url_suffix + '",' +
+      '"featureName":"' + item.feature_name + '","featureVersion":"' + item.version + '",' +
+      '"featureType":"' + item.type + '","runtimeContext":"' + deploy_task_context + '",' +
+      '"runtimeServerName":"' + deploy_task_server + '","runtimePropertyId":"' + item.pid + '"' +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: add_new_task
+  failed_when: add_new_task.json.returnCode is not defined or add_new_task.json.returnCode != 0
+
+- name: Deploy new task
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"requestDeployEsbTask"' + ',"taskId":' + add_new_task.json.taskId|string +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: deploy_new_task
+  failed_when: deploy_new_task.json.returnCode is not defined or deploy_new_task.json.returnCode != 0

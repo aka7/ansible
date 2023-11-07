@@ -1,0 +1,15 @@
+[[inputs.tail]]
+  name_override = "log"
+  files = [
+    "/var/log/extract.log",
+    "/ephem/talend/7.3.1/tac/logs/technical.log"
+  ]
+  path_tag = "path"
+  from_beginning = false
+  pipe = false
+  watch_method = "inotify"
+  data_format = "grok"
+  grok_patterns = [
+    '%{NUMBER:value:int}%{GREEDYDATA:error_message1:drop}VOYAGE_DELTA_LOAD_HALF_HOURLY%{GREEDYDATA:error_message2:drop}%{WORD:event_type} RemoteTaskExecution %{GREEDYDATA:error_message3:drop}',
+    '%{MONTHNUM:value:int}%{TIME:time} %{WORD:event_type} RemoteTaskExecution %{GREEDYDATA:error_message2:drop}VOYAGE_DELTA_LOAD%{GREEDYDATA:error_message3:drop}',]
+

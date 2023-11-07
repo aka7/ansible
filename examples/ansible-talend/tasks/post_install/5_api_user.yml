@@ -1,0 +1,30 @@
+---
+- name: Check for existing api admin user
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + sec_admin_user + '","authPass":"' + sec_admin_pass + '",' +
+      '"actionName":"getUserInfo","userLogin":"' + api_admin_user + '"' +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: check_api_user
+  failed_when: check_api_user.json.returnCode is not defined
+
+- name: Add api admin user
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + sec_admin_user + '","authPass":"' + sec_admin_pass + '",' +
+      '"actionName":"createUser","active":true,"userType":"DQ",' +
+      '"userFirstName":"API","userLastName":"Admin",' +
+      '"userLogin":"' + api_admin_user + '","userPassword":"' + api_admin_pass + '",' +
+      '"userRole":["Administrator","Operation manager"]' +
+      '}' ) | b64encode }}
+    validate_certs: false
+    return_content: true
+    status_code: 200
+    timeout: 300
+  register: this
+  when: check_api_user.json.returnCode != 0
+  failed_when: this.json.returnCode is not defined or this.json.returnCode != 0

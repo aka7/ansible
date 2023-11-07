@@ -1,0 +1,81 @@
+---
+- name: Create directories for certs.
+  ansible.builtin.file:
+    state: directory
+    path: "{{ cert_import_path }}"
+    mode: 0755
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+
+- name: Copy cert file
+  ansible.builtin.copy:
+    dest: "{{ item.dest }}"
+    content: "{{ item.content }}"
+    mode: 0755
+  with_items:
+    - {dest: "{{ cert_import_path }}/HMRCsigned.pem", content: "{{ example_signed_pem }}"}
+    - {dest: "{{ cert_import_path }}/HMRCsigned.cer", content: "{{ example_signed_cert }}"}
+    - {dest: "{{ cert_import_path }}/ColumbusRootCA.cer", content: "{{ ldap_cacert }}"}
+  no_log: true
+
+
+- name: Create TAC PKCS and JKS certificate bundles
+  ansible.builtin.include_role:
+    name: pkcs12_jks
+  vars:
+    certificate_filename: "{{ tac_cert_filename }}"
+    jks_filename: "{{ tac_cert_filename }}.jks"
+    jks_path: "{{ cert_import_path }}"
+    pkcs12_filename: "{{ tac_cert_filename }}.p12"
+    pkcs12_path: "{{ cert_import_path }}"
+    assumed_user: "{{ talend_user }}"
+    enable_no_log: true
+    password: "{{ talend_server_jks_pw }}"
+
+- name: Create ESB PKCS and JKS certificate bundles
+  ansible.builtin.include_role:
+    name: pkcs12_jks
+  vars:
+    certificate_filename: "{{ esb_cert_filename }}"
+    jks_filename: "{{ esb_cert_filename }}.jks"
+    jks_path: "{{ cert_import_path }}"
+    pkcs12_filename: "{{ esb_cert_filename }}.p12"
+    pkcs12_path: "{{ cert_import_path }}"
+    assumed_user: "{{ talend_user }}"
+    enable_no_log: true
+    password: "{{ talend_server_jks_pw }}"
+  when: install_licensed_esb_runtime is defined and install_licensed_esb_runtime == "true"
+
+- name: Create Runtime PKCS and JKS certificate bundles
+  ansible.builtin.include_role:
+    name: pkcs12_jks
+  vars:
+    certificate_filename: "{{ runtime_cert_filename }}"
+    jks_filename: "{{ runtime_cert_filename }}.jks"
+    jks_path: "{{ cert_import_path }}"
+    pkcs12_filename: "{{ runtime_cert_filename }}.p12"
+    pkcs12_path: "{{ cert_import_path }}"
+    assumed_user: "{{ talend_user }}"
+    enable_no_log: true
+    password: "{{ talend_server_jks_pw }}"
+  when: install_licensed_esb_runtime is defined and install_licensed_esb_runtime == "true"
+
+- name: Configure tomcat for https connection only
+  ansible.builtin.template:
+    src: templates/server.xml.j2
+    dest: "{{ talend_tomcat_conf_path }}/server.xml"
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    mode: 0644
+  notify:
+    - restart talend-tac
+  no_log: true
+
+- name: Import LDAPS certificate
+  java_cert:
+    cert_alias: ldaps_columbus_ca
+    cert_path: "{{ cert_import_path }}/ColumbusRootCA.cer"
+    keystore_path: "{{ ldaps_cacerts_path }}"
+    keystore_pass: "{{ ldaps_cacerts_pass }}"
+    state: present
+  changed_when: false

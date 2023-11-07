@@ -1,0 +1,62 @@
+---
+- name: List existing runtimes
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"listServer"' +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: existing_runtimes
+  failed_when: existing_runtimes.json.returnCode is not defined or existing_runtimes.json.returnCode != 0
+
+# Latest virtualserver details retrieved for the id.
+- name: List existing virtualserver
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"listVirtualServers"' +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: existing_virtualservers
+  failed_when: existing_virtualservers.json.returnCode is not defined or existing_virtualservers.json.returnCode != 0
+
+- name: set fact runtime_ids
+  set_fact:
+    runtime_ids: "{{ runtime_ids|default([]) + [existing_runtimes.content | from_json | json_query(jmesquery)] }}"
+  vars:
+    jmesquery: "result[?label == 'RUNTIME_ESB_NODE0'].id"
+
+- name: set fact runtime_ids
+  set_fact:
+    runtime_ids: "{{ runtime_ids|default([]) + [existing_runtimes.content | from_json | json_query(jmesquery)] }}"
+  vars:
+    jmesquery: "result[?label == 'RUNTIME_ESB_NODE1'].id"
+
+- name: set fact virtualserverID
+  set_fact:
+    virtual_server_id: "{{ existing_virtualservers.content | from_json | json_query(jmesquery) }}"
+  vars:
+    jmesquery: "result[?label == '{{ talend_virtualserver_esb }}'].id"
+
+# Adding esb to vs
+- name: Add runtimes to virtualserver
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"addServersToVirtualServer","virtualServerId":"' + virtual_server_id[0]|string + '",' +
+      '"servers":[{"serverId":"' + item|string + '"}]' +
+      '}' ) | b64encode }}
+    validate_certs: false
+    return_content: true
+    status_code: 200
+    timeout: 300
+  register: this
+  with_items: "{{ runtime_ids }}"
+  when: existing_virtualservers.content.find('"serverId":' + item|string + '') == -1
+  failed_when: this.json.returnCode is not defined or this.json.returnCode != 0

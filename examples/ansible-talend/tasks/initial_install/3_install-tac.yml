@@ -1,0 +1,136 @@
+---
+- name: Put SELinux in permissive mode
+  ansible.posix.selinux:
+    policy: targeted
+    state: permissive
+
+- name: Remove TAC temp & work folders
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "{{ talend_tomcat_path }}/work"
+    - "{{ talend_tomcat_path }}/temp"
+
+- name: Run installer for talend administration center
+  command:
+    cmd: "./Talend-Installer-{{ talend_version_timestamp }}-V{{ talend_version }}-linux64-installer.run --optionfile ./talend_tac_install_config.txt"
+  args:
+    chdir: "{{ installer_dir }}"
+  when: not tac_dir.stat.exists
+  register: talend_installer_stat
+
+# Install the Talend patch to fix the LDAPS issue.
+# Stop tac before updating the war file and port the db config.
+# There is no elegant way to get the talend patch version, so we opt to check the config file md5sum and decide to install the patch.
+
+- name: Get sha256 sum of quartz.properties
+  stat:
+    path: "{{ talend_app_conf_path }}/quartz.properties"
+    checksum_algorithm: sha256
+    get_checksum: true
+  register: patch_install
+
+- name: Stop talend-tac
+  service:
+    name: "talend-tac-{{ talend_version }}"
+    state: stopped
+  when: patch_install.stat.checksum == quartz_sha256_sum and talend_version == "7.3.1"
+
+- name: Backup Configuration.properties before the patch install
+  copy:
+    src: "{{ talend_app_conf_path }}/configuration.properties"
+    dest: "{{ installer_dir }}/configuration.properties_backupb4patchinstall"
+    mode: '0755'
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    force: true
+    remote_src: true
+  when: patch_install.stat.checksum == quartz_sha256_sum and talend_version == "7.3.1"
+
+- name: Remove tac app from webapps to clear down base install to apply patch
+  file:
+    path: "{{ talend_tomcat_webapps_path }}/org.talend.administrator"
+    state: absent
+  when: patch_install.stat.checksum == quartz_sha256_sum and talend_version == "7.3.1"
+
+- name: Add tac app folder from webapps
+  file:
+    path: "{{ talend_tomcat_webapps_path }}/org.talend.administrator"
+    state: directory
+    mode: '0755'
+  when: patch_install.stat.checksum == quartz_sha256_sum and talend_version == "7.3.1"
+
+- name: Unzip the war file to webapps
+  unarchive:
+    src: "{{ installer_dir }}/{{ talend_patch_war }}"
+    dest: "{{ talend_tomcat_webapps_path }}/org.talend.administrator"
+    mode: '0755'
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    remote_src: true
+  when: patch_install.stat.checksum == quartz_sha256_sum and talend_version == "7.3.1"
+
+- name: Restore Configuration.properties after the patch install
+  copy:
+    src: "{{ installer_dir }}/configuration.properties_backupb4patchinstall"
+    dest: "{{ talend_app_conf_path }}/configuration.properties"
+    mode: '0755'
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    force: true
+    remote_src: true
+  when: patch_install.stat.checksum == quartz_sha256_sum and talend_version == "7.3.1"
+
+# configure the quartz properties after patch install.
+
+- name: Enable quartz scheduler cluster in quartz.properties
+  lineinfile:
+    path: "{{ talend_app_conf_path }}/quartz.properties"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backrefs: true
+    backup: true
+  with_items:
+    - {regexp: "^#org.quartz.scheduler.instanceName = MyClusteredScheduler", line: "org.quartz.scheduler.instanceName = MyClusteredScheduler"}
+    - {regexp: "^#org.quartz.scheduler.instanceId = AUTO", line: "org.quartz.scheduler.instanceId = AUTO"}
+    - {regexp: "^#org.quartz.jobStore.isClustered = true", line: "org.quartz.jobStore.isClustered = true"}
+    - {regexp: "^#org.quartz.jobStore.clusterCheckinInterval = 20000", line: "org.quartz.jobStore.clusterCheckinInterval = 20000"}
+
+- name: Put SELinux in enforcing mode
+  ansible.posix.selinux:
+    policy: targeted
+    state: enforcing
+
+- name: Check for existing talend logs dir
+  stat:
+    path: "{{ talend_logs_path }}"
+  register: logs_dir_stat
+
+- name: Ensure talend logs dir exists
+  file:
+    path: "{{ talend_logs_path }}"
+    state: directory
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    mode: 0775
+  when: not logs_dir_stat.stat.exists
+
+- name: Define shared jobs, shared logs and project directory in a list
+  set_fact:
+    talend_tac_subdirs: ["{{ shared_jobs_path }}", "{{ shared_logs_path }}", "{{ project_dir }}"]
+
+- name: Check for existing shared jobs, shared logs and project sub directories
+  stat:
+    path: "{{ talend_tac_subdirs }}"
+  register: talend_tac_subdirs_stat
+
+- name: Create shared job, shared log and subdirectories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    mode: 0775
+  loop: "{{ talend_tac_subdirs }}"
+  when:  not talend_tac_subdirs_stat.stat.exists

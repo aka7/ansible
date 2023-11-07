@@ -1,0 +1,42 @@
+---
+- name: Vault login
+  command: "vault login -method=aws -namespace={{ vault_namespace }} header_value={{ hashicorp_vault_header }}"
+  environment:
+    VAULT_ADDR: "{{ hashicorp_vault_url }}"
+    VAULT_NAMESPACE: "{{ vault_namespace }}"
+
+- name: Update root's .bashrc
+  blockinfile:
+    path: /root/.bashrc
+    block: |
+      export VAULT_ADDR="{{ hashicorp_vault_url }}"
+      export VAULT_NAMESPACE="{{ vault_namespace }}"
+
+- name: Set the fact for the vault command
+  set_fact:
+    vault_read_command: vault kv get -address={{ hashicorp_vault_url | default(ansible_env.VAULT_ADDR) }} -field={{ item.field }} {{ item.path }}
+  tags:
+    - add_ldap_users
+
+- name: Debug for when this doesn't work
+  debug:
+    msg: "Executing: {{ vault_read_command }}"
+
+- name: Load {{ item.field }} from vault
+  command: "{{ vault_read_command }}"
+  become: true
+  register: vault_read_output
+  no_log: true
+  changed_when: false
+  environment:
+    VAULT_ADDR: "{{ hashicorp_vault_url }}"
+    VAULT_NAMESPACE: "{{ vault_namespace }}"
+  tags:
+    - add_ldap_users
+
+- name: Set {{ item.field }} fact # noqa: var-naming
+  set_fact:
+    "{{ item.variable_name }}": "{{ vault_read_output.stdout }}"
+  no_log: true
+  tags:
+    - add_ldap_users

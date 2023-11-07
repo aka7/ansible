@@ -1,0 +1,28 @@
+---
+- name: Undeploy task to remove
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"requestUndeployEsbTask"' + ',"taskId":' + item|string +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: undeploy_task
+  # This is temporary nexus fix until artifactory supported ... missing xml and zookeeper features on reposistory but still works
+  # failed_when: undeploy_task.json.returnCode is not defined or undeploy_task.json.returnCode != 0
+  failed_when: undeploy_task.json.returnCode is not defined or undeploy_task.json.returnCode != 170
+
+- name: Delete task to remove
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"deleteEsbTask"' + ',"taskId":' + item|string +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: delete_task
+  failed_when: delete_task.json.returnCode is not defined or delete_task.json.returnCode != 0

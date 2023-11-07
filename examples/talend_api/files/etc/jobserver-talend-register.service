@@ -1,0 +1,13 @@
+[Unit]
+Description=Register jobserver to talend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/talend_runner/bin/talend_register -s "%H"
+ExecStop=/opt/talend_runner/bin/talend_deregister -s "%H"
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Unregister jobserver from talend during shutdown
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/talend_runner/bin/talend_deregister -s "%H"
+
+[Install]
+WantedBy=halt.target reboot.target shutdown.target

@@ -1,0 +1,36 @@
+# This SELinux policy is needed to allow restart of Talend services in SELinux enforcing mode
+module tac-policy 1.0;
+
+require {
+	type su_exec_t;
+	type groupadd_t;
+	type usr_t;
+	type useradd_t;
+        type unlabeled_t;
+        type init_t;
+	class passwd rootok;
+        class file { append create execute execute_no_trans map open read unlink write };
+        class dir { add_name remove_name write };
+}
+#============= groupadd_t ==============
+allow groupadd_t usr_t:file append;
+
+#============= init_t ==============
+
+#!!!! This avc is allowed in the current policy
+#!!!! This policy is needed for TAC service to start in SELinux enforcing mode.
+allow init_t self:passwd rootok;
+allow init_t unlabeled_t:dir add_name;
+allow init_t unlabeled_t:dir remove_name;
+allow init_t su_exec_t:file map;
+
+#!!!! This avc is allowed in the current policy
+allow init_t unlabeled_t:file { append create write };
+allow init_t unlabeled_t:file { execute execute_no_trans unlink };
+
+#!!!! This avc can be allowed using the boolean 'domain_can_mmap_files'
+allow init_t su_exec_t:file { execute execute_no_trans open read };
+
+#============= useradd_t ==============
+allow useradd_t usr_t:dir write;
+allow useradd_t usr_t:file append;

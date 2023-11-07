@@ -1,0 +1,8 @@
+---
+- name: Remount the /tmp directory to remove exec permissions in line with CIS hardening
+  mount:
+    src: tmpfs
+    fstype: tmpfs
+    path: /tmp
+    state: mounted
+    opts: rw,nosuid,nodev,seclabel,noexec

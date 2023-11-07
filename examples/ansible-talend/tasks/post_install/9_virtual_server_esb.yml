@@ -1,0 +1,30 @@
+---
+- name: List existing virtualserver
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"listVirtualServers"' +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: existing_virtualservers
+  failed_when: existing_virtualservers.json.returnCode is not defined or existing_virtualservers.json.returnCode != 0
+
+- name: create ESB virtualserver
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"createVirtualServer","description":"virtual server ' + item + '",' +
+      '"clusterGroup":"' + ec2_tag_Environment + '","label":"' + item + '",' +
+      '"timezoneId":"Europe/London"' +
+      '}' ) | b64encode }}
+    validate_certs: false
+    return_content: true
+    status_code: 200
+    timeout: 300
+  register: created_virtualservers
+  with_items: "{{ talend_virtualserver_esb }}"
+  when: existing_virtualservers.content.find('"label":"' + item + '"') == -1
+  failed_when: created_virtualservers.json.returnCode is not defined or created_virtualservers.json.returnCode != 0

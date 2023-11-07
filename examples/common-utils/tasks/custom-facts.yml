@@ -1,0 +1,17 @@
+---
+- name: Create directory for ansible custom facts
+  ansible.builtin.file:
+    state: directory
+    recurse: true
+    path: /etc/ansible/facts.d
+    mode: 0755
+
+- name: Install custom ec2_tags fact
+  ansible.builtin.copy:
+    src: files/ec2_tags.fact
+    dest: /etc/ansible/facts.d
+    mode: 0755
+
+- name: Re-read facts after adding custom fact
+  ansible.builtin.setup:
+      filter: ansible_local

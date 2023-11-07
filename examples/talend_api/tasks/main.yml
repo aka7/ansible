@@ -1,0 +1,57 @@
+---
+- name: make user root if running on jobserver
+  set_fact:
+    js_agent_user: root
+    js_agent_group: root
+  when: self_register_js is defined and self_register_js
+
+- name: Create a directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ base_path }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ js_agent_user }}"
+    group: "{{ js_agent_group }}"
+
+- name: Create a dir structure
+  ansible.builtin.file:
+    path: "{{ base_path }}/{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ js_agent_user }}"
+    group: "{{ js_agent_group }}"
+  with_items:
+    - etc
+    - bin
+    - lib
+- name: set env fact
+  set_fact:
+    my_env: "{{ ec2_tag_Environment }}"
+
+- name: copy talend_runner script
+  copy:
+    src: bin/talend_runner.sh
+    dest: '{{  base_path }}/bin/talend_runner.sh'
+    mode: "0555"
+    owner: "{{ js_agent_user }}"
+    group: "{{ js_agent_group }}"
+ 
+- name: copy shared script
+  copy:
+    src: lib/shared-utils.sh
+    dest: '{{  base_path }}/lib/shared-utils.sh'
+    mode: "0555"
+    owner: "{{ js_agent_user }}"
+    group: "{{ js_agent_group }}"
+
+- name: "Generate env config data from template"
+  template:
+    src: templates/config.j2
+    dest: "{{ base_path }}/etc/config"
+    mode: "0555"
+    owner: "{{ js_agent_user }}"
+    group: "{{ js_agent_group }}"
+
+- name: install jobserver scripts
+  include_tasks: jobserver_reg.yml
+  when: self_register_js is defined and self_register_js

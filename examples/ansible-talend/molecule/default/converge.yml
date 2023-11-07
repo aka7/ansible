@@ -1,0 +1,8 @@
+---
+- name: Converge ansible-talend-tac
+  hosts: all
+  vars_files:
+    - vars/common.yml
+  tasks:
+    - debug:
+        msg: Include role when Vault is mocked

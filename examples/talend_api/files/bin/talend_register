@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+## Script to register a host in talend and add to virtual server.
+# only if virtual exists.
+#
+set -o pipefail
+
+# Get the directory containing the current script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
+source "$SCRIPT_DIR/../lib/shared-utils.sh"
+
+# Check if required programs are installed
+for cmd in curl jq awk base64; do
+    if ! command -v "$cmd" &>/dev/null; then
+        printf '%s\n' 'Error: %s is not installed.' "$cmd" >&2
+        exit 1
+    fi
+done
+
+#-----------#
+# Functions #
+#-----------#
+
+## \brief Checks if the script arguments are valid.
+## \desc This code requires one mandatory arguement. otherwise, it prints an error message and exits.
+check_arguments() {
+TIMEOUT=
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+        ## \option -n, --server-name
+        ## Assigns the Task name as seen in Job Conductor in TAC.
+        -s | --servername)
+            SERVER_NAME=$2
+            shift 2
+            ;;
+        ## \option -h, --help
+        ## Prints the help and exits.
+        -h | --help)
+            show_usage_js
+            ;;
+        *)
+            printf "%s\n" "Error: Invalid argument $1" >&2
+            exit 1
+            ;;
+        esac
+    done
+
+
+    # Check if SERVER_NAME is provided, if not, print error and exit
+    if [[ -z "$SERVER_NAME" ]]; then
+        printf '%s\n' 'Error: server fqdn is required.' >&2
+        exit 1
+    fi
+
+}
+
+## \function js_trap
+## \function-brief This function is a trap handler for the signals `EXIT`, `TERM`, and `INT`.
+## It captures the return code of the script, prints a message indicating that the job execution has been terminated, and then calls the `stop_task_execution` function to perform cleanup tasks.
+## \example Trap signals and call js_trap function
+## \example-code bash
+##   trap 'js_trap EXIT' EXIT
+##   trap 'js_trap TERM' TERM
+##   trap 'js_trap INT' INT
+js_trap() {
+    return_code=$?
+    echo $return_code
+    exit $return_code
+}
+
+
+## \function load_default_config
+# ## \function-brief Loads default config for vault and any other environment specfic config
+load_default_config(){
+    if [ -f "$SCRIPT_DIR/../etc/config" ]; then
+        source "$SCRIPT_DIR/../etc/config"
+    fi
+}
+
+remove_dummy_server(){
+    # check if we have the dummy server created during dereg
+    set_server_label "dummy-$SERVER_NAME"
+    print_message "Remove $TALEND_SERVER_LABEL if it exists" info
+    get_server_id "dummy-$SERVER_NAME"
+    if [ ! -z $TALEND_SERVER_ID ]; then
+        print_message "removing server dummy-$SERVER_NAME with label $TALEND_SERVER_LABEL from talend" info
+        remove_server $TALEND_SERVER_ID
+    fi
+}
+#------------#
+# Define Run #
+#------------#
+
+## \function pre
+## \function-brief Executes the preparation parts of the script.
+pre() {
+    ## - `check_arguments` Check script input arguments
+    check_arguments "$@"
+
+    # source default config or project config.
+    # if project name is defined, it will use project config.
+    if [ -z "$PROJECT_NAME" ]; then
+        load_default_config
+    else
+        if [ -f "$SCRIPT_DIR/../etc/$PROJECT_NAME" ]; then
+            source "$SCRIPT_DIR/../etc/$PROJECT_NAME"
+        else
+            print_message "no project specific config in $SCRIPT_DIR/../etc/$PROJECT_NAME, using default" info
+            load_default_config
+        fi
+    fi
+
+    ## - `set_vault_vars` Sets Vault variables.
+    set_vault_vars
+    ## - unset and export `VAULT_TOKEN`
+    export VAULT_ADDR
+    export VAULT_NAMESPACE
+    export VAULT_NAMESPACE
+    if [ -z $VAULT_TOKEN ]; then
+        get_vault_token
+    fi
+    export VAULT_TOKEN
+    ## - `set_tac_url_vars` Sets TAC URL variables.
+    set_tac_url_vars
+    check_api_status
+}
+
+## \function main
+## \function-brief Executes the main part of the script.
+main() {
+    print_message "==Started GET TALEND VAULT CREDENTIALS process==" info
+
+    get_auth || exit 1
+    print_variables TAC_URL "$TAC_URL_BASE" VAULT_ADDR "$VAULT_ADDR" VAULT_HEADER "$VAULT_HEADER" VAULT_NAMESPACE "$VAULT_NAMESPACE" TALEND_AWHUSER "$TALEND_AWHUSER"
+
+    print_message "==Completed TALEND VAULT GET CREDENTIALS process==" info
+    print_message "==Started Adding Jobserver to talend==" info
+
+    set_virtual_server_label $SERVER_NAME
+    set_server_label $SERVER_NAME
+    get_server_id
+    print_variables "server id" "$TALEND_SERVER_ID"
+    get_vserver_id
+
+    # virtual server must exist in talend for us register the server. Part of onboarding process.
+    if [ -z $TALEND_VSERVER_ID ]; then
+        print_message "virtual  [ $TALEND_VSERVER_NAME ] does not exist in talend, please make onboarding request" error
+        exit 1
+    fi
+
+    print_variables "virtual server id" "$TALEND_VSERVER_ID"
+    if [ -z $TALEND_SERVER_ID ]; then
+        print_message "$TALEND_SERVER_LABEL does not exist in talend, adding jobserver" info
+        register_server $SERVER_NAME
+        print_message "Add jobserver $TALEND_SERVER_LABEL to virtual server $TALEND_VSERVER" info
+        add_js_to_vs
+        remove_dummy_server
+        exit 0
+    fi
+
+    print_message "$SERVER_NAME already registered in talend, ID: $TALEND_SERVER_ID" info
+    add_js_to_vs
+    # cleanup if there is dummy host, remove it.
+    remove_dummy_server
+    exit 0
+}
+
+#-----#
+# Run #
+#-----#
+
+trap 'js_trap EXIT' EXIT
+trap 'js_trap TERM' TERM # 15+128
+trap 'js_trap INT' INT
+
+# Only run if direct execution - added to support unit testing
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    pre "$@"
+    main
+fi

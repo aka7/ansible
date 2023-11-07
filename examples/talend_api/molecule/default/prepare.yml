@@ -1,0 +1,19 @@
+---
+- name: Prepare
+  hosts: all
+  vars_files:
+    - vars/common.yml
+
+  tasks:
+    - name: Some Preparatory Action 
+      ansible.builtin.debug:
+        msg: "This is a stub, please expand" 
+    - name: Ensure group "jobscheduler" exists
+      ansible.builtin.group:
+        name: jobscheduler
+        state: present
+    - name: Ensure user "jobscheduler" exists
+      ansible.builtin.user:
+        name: jobscheduler
+        comment: jobscheduler
+        group: jobscheduler

@@ -1,0 +1,8 @@
+---
+
+- name: Converge ansible-common-utils
+  hosts: ansible-common-utils
+  vars_files: 
+    - vars/common.yml
+  roles:
+    - "ansible-common-utils"

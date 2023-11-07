@@ -1,0 +1,11 @@
+---
+- name: Prepare
+  hosts: all
+  vars_files:
+    - vars/common.yml
+
+  tasks:
+    - name: Some Preparatory Action 
+      ansible.builtin.debug:
+        msg: "This is a stub, please expand" 
+    

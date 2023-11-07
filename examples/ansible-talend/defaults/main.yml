@@ -1,0 +1,141 @@
+---
+
+talend_version: "7.3.1"
+talend_version_timestamp: "20200219_1130"
+installer_dir: "/data/talend_installer"
+installer_zip: "Talend-Installer-Starter-{{ talend_version_timestamp }}-V{{ talend_version }}-installer.zip"
+installer_dist_with_version: "dist-V{{ talend_version }}"
+installer_dist: "dist"
+talend_license: "license"
+talend_patch_version: "Patch_20230303_TPS-5427_v1"
+talend_patch: "{{ talend_patch_version }}-{{talend_version}}.zip"
+talend_patch_war: "org.talend.administrator-{{ talend_version }}.war"
+talend_runtime_full_install_patch: "Talend-Runtime-V{{ talend_version }}.R2022-09-RT"
+talend_runtime_full_install_patch_ext: "{{ talend_runtime_full_install_patch }}.tar"
+talend_runtime_incremental_patch_folder: "{{ talend_runtime_incremental_patch }}.R2022-09-RT"
+tesb_user: tadmin
+tesb_password: tadmin
+talend_runtime_incremental_patch: "Patch_20230105_R2023-01_v1-RT-{{ talend_version }}"
+talend_runtime_incremental_patch_ext: "{{ talend_runtime_incremental_patch }}.zip"
+
+# pre-requisites which must be installed
+talend_tac_required_packages:
+  - java-1.8.0-openjdk
+
+required_rhel8_packages:
+  - python3.11-jmespath
+
+jre_lib_sec_path: "/etc/alternatives/jre/lib/security"
+talend_base_dir: /data/talend
+talend_tac_install_dir: "{{ talend_base_dir }}/{{ talend_version }}"
+cert_import_path: "{{ talend_tac_install_dir }}/tac/ssl"
+talend_tomcat_path: "{{ talend_tac_install_dir }}/tac/apache-tomcat"
+talend_tomcat_bin_path: "{{ talend_tomcat_path }}/bin"
+talend_tomcat_conf_path: "{{ talend_tomcat_path }}/conf"
+talend_tomcat_webapps_path: "{{ talend_tomcat_path }}/webapps"
+talend_app_conf_path: "{{ talend_tomcat_webapps_path }}/org.talend.administrator/WEB-INF/classes"
+talend_logs_path: "{{ talend_tac_install_dir }}/tac/logs"
+talend_esb_path: "{{ talend_tac_install_dir }}/esb"
+talend_container_orig_path: "{{ talend_esb_path }}/container"
+talend_container_template_path: "{{ talend_esb_path }}/container-template"
+talend_container_app_path: "{{ talend_esb_path }}/container-app"
+talend_container_app_service: "talend-container-app-{{ talend_version }}"
+talend_runtime_path: "{{ talend_tac_install_dir }}/runtime"
+talend_runtime_service: "talend-runtime-{{ talend_version }}"
+
+talend_user: talenduser
+talend_group: talendgroup
+
+# Host entry to be removed in a future release.
+artifactory_host: artifactory.example.com
+artifactory_gateway: artifactory.exmaple.com
+artifactory_gateway_releases_repo: "exmaple-{{ ec2_tag_Programme }}-{{ ec2_tag_Project }}-releases"
+artifactory_gateway_snapshots_repo: "exmaple-{{ ec2_tag_Programme }}-{{ ec2_tag_Project }}-snapshots"
+artifactory_url: https://{{ artifactory_gateway | default(artifactory_host) }}/artifactory
+artifactory_user: "{{ artifactory_gateway_user | default(arti_talend_user) }}"
+artifactory_pass: "{{ artifactory_gateway_pass | default(arti_talend_pass) }}"
+releases_repo: "{{ artifactory_gateway_releases_repo | default('talend-releases') }}"
+snapshots_repo: "{{ artifactory_gateway_snapshots_repo | default('talend-snapshots') }}"
+
+mysql_jdbc_version: 8.0.26
+mysql_jdbc_jar: mysql-connector-java-{{ mysql_jdbc_version }}.jar
+mysql_jdbc_url: https://{{ artifactory_host }}/artifactory/Central-cache/mysql/mysql-connector-java/{{ mysql_jdbc_version }}/{{ mysql_jdbc_jar }}
+artifactory_dat_host: artifactory.exmaple.com
+oracle_jdbc_version: 19.3.0.0
+oracle_jdbc_jar: ojdbc8-{{ oracle_jdbc_version }}.jar
+oracle_jdbc_url: "https://{{ artifactory_dat_host }}/artifactory/exmaple-dapm-talend-generic/{{ oracle_jdbc_jar }}"
+talend_efs_enabled: true
+talend_efs_server: "talendefs-{{ ec2_tag_Environment }}-{{ ec2_tag_Product }}.{{ cli53_domain }}"
+talend_efs_tac_path: "/"
+talend_efs_tac_mount: "/data/talend-tac"
+talend_install_mutex_prefix: "/data/talend-tac/install_complete"
+talend_mount_type: "efs"
+talend_mount_opts: "_netdev,tls,iam"
+talend_lock_dir: "{{ talend_efs_tac_mount }}/esb-ha-lock"
+talend_lock_delay: 10000
+talend_lock_level: 50
+
+# Vault settings
+hashicorp_vault_url: "{{ 'https://vault.exmaple.com:8200' if ec2_tag_VPC == 'nonlive' else 'https://vault-prod.exmaple.com:8200' }}"
+vault_path: "kv/talend"
+vault_mysql_path: "kv/mysql-rds"
+vault_shared_path: "kv/shared/talend"
+
+shared_jobs_path: "{{ talend_efs_tac_mount }}/administrator/generatedJobs"
+shared_logs_path: "{{ talend_efs_tac_mount }}/administrator/executionLogs"
+project_name: ""
+project_dir: "{{ talend_efs_tac_mount }}/{{ project_name }}"
+
+tac_lb_host: "talend-tac-{{ ec2_tag_Product }}-{{ ec2_tag_Environment }}.{{ short_domain_name }}"
+quartz_sha256_sum: "978cb52880d646f2c7426d0c42130394e8943ad27357805654d5603fb8f1614f"
+
+talend_jobservers_template: "node{{ item }}-talend-jobserver-{{ ec2_tag_Environment }}-{{ ec2_tag_Product }}"
+
+talend_virtualserver_js: "jobserver-virtualserver-{{ ec2_tag_Environment }}-{{ ec2_tag_Product }}"
+talend_virtualserver_esb: "esb-runtime-virtualserver-{{ ec2_tag_Environment }}-{{ ec2_tag_Product }}"
+
+# VCS settings and the flag to be enabled if the projects to be added to TAC build.
+# projects define the list of git repo to be added and respective vault path( should match the name of the project ) for the service account priv keys(prefix the project name,so multi-project setup is supported) to initiaze the git repo.
+# Note: the git commits are mandated to be from user accounts,service account is used only for the talend project configurations.
+vcs_server: gitlab.example.com
+configure_projects: false
+projects: []
+esb_runtime_max_memory: 2G
+esb_runtime_admin_console_port: "9002"
+esb_runtime_command_port: "8000"
+esb_runtime_file_port: "8001"
+esb_runtime_management_reg_port: "1099"
+esb_runtime_management_server_port: "44444"
+esb_runtime_monitoring_port: "8888"
+esb_runtime_timeout_unknown_state: "120"
+
+# whether to register jobserver in tac post install
+register_jobserver: false
+# default talend jobserver ports
+# used when registering jobserver in tac
+talend_js_command_port: "8000"
+talend_js_file_port: "8001"
+talend_js_monitoring_port: "8888"
+talend_js_message_port: "8555"
+talend_js_timeout_unknown_state: "120"
+
+ci_cd: false
+deploy_esb_tasks: []
+deploy_task_repository: nexus-releases  # Temporary till artifactory supported
+deploy_task_context: Default
+deploy_task_server: esb-runtime-virtualserver-{{ ec2_tag_Environment }}-{{ ec2_tag_Project }}
+
+engineers_ldap_groups: ""
+admin_users: ""
+
+trun_config_script_version: 0
+
+node_index: "{{ ec2_tag_Target }}"
+node_admin_user: "{{ node_index }}-admin"
+node_admin_group: "{{ node_admin_user }}"
+node_admin_user_home_dir: "/home/{{ node_admin_user }}"
+
+talend_esb_server:
+talend_esb_server_id:
+
+oracle_group: oracle

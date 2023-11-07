@@ -1,0 +1,3 @@
+---
+# enable by default, anyone wish to turn off can do so.
+custom_facts: true

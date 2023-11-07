@@ -1,0 +1,35 @@
+#! /bin/bash
+
+# Molecule runner for running molecule on Jenkins
+export BUILD_NUMBER=${BUILD_NUMBER:-${AWS_IAM_USERNAME//./}}
+export GIT_BRANCH=${GIT_BRANCH}
+export CONTAINER_PREFIX=$(echo "$GIT_BRANCH" | tr "/" "_" | cut -c 1-25)${BUILD_NUMBER,,}
+export ROLE_NAME=$(basename "$(pwd)")
+export ROLE=${ROLE_NAME//ansible-/}
+export VAULT_ADDR=https://vault.example.com:8200
+
+if ! command -v virtualenv; then
+  echo "This script needs virtualenv to function."
+  echo "Attempting to install using pip."
+  pip install virtualenv --user
+fi
+
+REQUIRED_ANSIBLE_VERSION=2.7.0
+
+if [ ! -d .venv ]; then
+    sudo yum install libselinux-python -y
+    virtualenv -p "$(which python2.7)" .venv
+    sudo cp -r /usr/lib64/python2.7/site-packages/selinux .venv/lib/python2.7/site-packages/
+    sudo chown -R "$USER" .venv/lib/python2.7/site-packages
+    . .venv/bin/activate
+    pip install pytest==3.9.3 ansible==$REQUIRED_ANSIBLE_VERSION molecule==2.19.0 docker hvac boto3 botocore boto pymysql
+fi
+
+. .venv/bin/activate
+
+if hostname -I | grep "^10.179"; then
+  export https_proxy="10.105.7.11:9090"
+  export no_proxy="artifactory.example.com, vault.example.com"
+fi
+
+molecule "$@"

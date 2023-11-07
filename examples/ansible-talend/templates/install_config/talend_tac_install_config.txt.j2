@@ -1,0 +1,31 @@
+mode=unattended
+debugtrace={{ installer_dir }}/debugInstall.txt
+unattendedmodeui=none
+prefix={{ talend_base_dir }}/{{ talend_version }}
+installStyle=advanced
+installType=custom
+licenseFile={{ talend_base_dir }}/license
+{% if install_licensed_esb_runtime is defined and install_licensed_esb_runtime == "true" %}
+enable-components=tac,serv,runtime,esb
+disable-components=tds,tdqp,dataprep,sap_rfc,studio,logserv,cmdline,iam,jobserver
+{% else %}
+enable-components=tac,serv
+disable-components=tds,tdqp,dataprep,sap_rfc,studio,logserv,cmdline,iam,jobserver,runtime,esb
+{% endif %}
+tomcat=install8
+tacUserSelection=tacStdUser
+tacAdminUser={{ sec_admin_user }}
+tacAdminPwd={{ sec_admin_pass }}
+tacLogServ=0
+tacDB=mysql
+tacPort=8080
+tacWebAppName=org.talend.administrator
+tacInstallNexus=0
+tacSetupEmailNotification=false
+tacDBHost={{ talend_db_host }}
+tacDBPort=3306
+tacDBName=talend
+tacDBUser={{ talend_db_user }}
+tacDBPswd={{ talend_db_password }}
+tacDBdriver={{ talend_base_dir }}/{{ mysql_jdbc_jar }}
+installServiceTAC=1

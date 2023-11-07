@@ -1,0 +1,15 @@
+---
+version: "3"
+
+services:
+  molecule:
+    image: artifactory.exmaple.com/ansible-toolset:1.0.1
+    working_dir: ${PWD}
+    entrypoint: ./ansible.sh
+    user: "root:root"
+    volumes:
+      - ${PWD}:${PWD}
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - label:disable

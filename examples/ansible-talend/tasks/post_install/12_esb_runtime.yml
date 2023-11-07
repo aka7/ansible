@@ -1,0 +1,396 @@
+---
+- name: Source talend-env.sh to set JAVA_HOME before ESB install to fix JAVA_HOME=null
+  shell: |
+    source /etc/profile.d/talend-env.sh
+    echo $JAVA_HOME
+  register: java_home
+
+# ESB RUNTIME CONFIG STARTS
+
+- name: ESB Runtime install as a block of tasks to retry if karaf configuration fails
+  block:
+    - name: Increment the retry count
+      set_fact:
+        esb_runtime_retry_count: "{{ 0 if esb_runtime_retry_count is undefined else esb_runtime_retry_count | int + 1 }}"
+
+    - name: Stop talend runtime container
+      systemd:
+        name: talend-runtime-7.3.1
+        state: stopped
+
+    - name: Check for existing ESB Runtime install.
+      stat:
+        path: "{{ talend_runtime_path }}"
+      register: esb_runtime_dir
+
+    - name: Remove base install of ESB Runtime folder # noqa: deprecated-command-syntax
+      command: "rm -rf  {{ talend_runtime_path }}"
+      when: esb_runtime_dir.stat.exists
+
+    # RT 2022 Full install
+    - name: Create esb runtime folders before patching
+      file:
+        path: "{{ talend_runtime_path }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ talend_user }}"
+        group: "{{ talend_group }}"
+      ignore_errors: true # noqa: ignore-errors
+
+    - name: Copy Runtime full install patch into ESB runtime
+      shell: "cp -a {{ installer_dir }}/{{ talend_runtime_full_install_patch }}/* {{ talend_runtime_path }}/"
+
+    - name: Create trun initialisation script for runtime
+      template:
+        src: "{{ item }}.j2"
+        dest: "{{ talend_runtime_path }}/{{ item }}"
+        mode: '0755'
+        owner: "{{ talend_user }}"
+        group: "{{ talend_group }}"
+      vars:
+        trun_service_name: "{{ talend_runtime_service }}"
+        trun_service_display: "Talend-ESB-Runtime-APP"
+        trun_service_desc: "Talend ESB Application Runtime"
+        trun_config_script_version: 0
+      with_items:
+        - trun.init-app
+        - trun.start-el
+
+    - name: Replace default ESB Runtime HTTPS_Port from 9001 to 9002
+      lineinfile:
+        path: "{{ talend_runtime_path }}/scripts/configureC0.sh"
+        regexp: '^HTTPS_Port=9001'
+        line: 'HTTPS_Port=9002'
+
+    - name: Check for existing runtime service
+      stat:
+        path: "{{ talend_runtime_path }}/bin/{{ talend_runtime_service }}.service"
+      register: talend_runtime_service_stat
+
+    - name: Run karaf trun initialisation for ESB Runtime
+      shell: "cat {{ talend_runtime_path }}/trun.init-app | {{ talend_runtime_path }}/bin/trun"
+      register: result
+      until: result.stdout.find("service {{ talend_runtime_service }}-service start") != -1
+      retries: 5
+      delay: 5
+      when: not talend_runtime_service_stat.stat.exists
+      
+    - name: Update JAVA_HOME in runtime wrapper config file
+      lineinfile:
+        path: "{{ talend_runtime_path }}/etc/{{ talend_runtime_service }}-wrapper.conf"
+        regexp: '^set.default.JAVA_HOME='
+        line: 'set.default.JAVA_HOME={{ java_home.stdout }}'
+
+    - name: Remove maxmemory parameter
+      lineinfile:
+        path: "{{ talend_runtime_path }}/etc/{{ talend_runtime_service }}-wrapper.conf"
+        regexp: '^wrapper.java.maxmemory='
+        line: '#wrapper.java.maxmemory=512'
+
+    - name: Configure Additional Memory Parameter
+      lineinfile:
+        path: "{{ talend_runtime_path }}/etc/{{ talend_runtime_service }}-wrapper.conf"
+        insertafter: '^wrapper.java.additional.14='
+        line: 'wrapper.java.additional.15=-Xmx{{ esb_runtime_max_memory }}'
+
+    - name: Update run as user in runtime service
+      lineinfile:
+        path: "{{ talend_runtime_path }}/bin/{{ talend_runtime_service }}-service"
+        regexp: '^#RUN_AS_USER='
+        line: "RUN_AS_USER={{ talend_user }}"
+
+    - name: Update run as user in runtime systemd script
+      lineinfile:
+        path: "{{ talend_runtime_path }}/bin/{{ talend_runtime_service }}.service"
+        insertafter: '^\[Service\]'
+        line: "User={{ talend_user }}\nGroup={{ talend_group }}"
+
+    - name: Update PID file path in runtime service
+      lineinfile:
+        path: "{{ talend_runtime_path }}/bin/{{ talend_runtime_service }}.service"
+        regexp: '^PIDFile='
+        line: "PIDFile={{ talend_runtime_path }}/{{ talend_runtime_service }}.wrapper.pid"
+
+    - name: Remove {{ talend_runtime_service }}.service file from systemd
+      file:
+        dest: "/etc/systemd/system/{{ talend_runtime_service }}.service"
+        state: absent
+
+    - name: Link to service file for ESB runtime
+      file:
+        src: "{{ talend_runtime_path }}/bin/{{ talend_runtime_service }}.service"
+        dest: "/etc/systemd/system/{{ talend_runtime_service }}.service"
+        state: link
+
+    - name: Enable and start runtime
+      systemd:
+        name: "{{ talend_runtime_service }}"
+        daemon_reload: true
+        enabled: true
+        state: started
+
+    - name: Change log4j level for runtime container
+      lineinfile:
+        path: "{{ talend_runtime_path }}/etc/org.ops4j.pax.logging.cfg"
+        regexp: '^log4j2.rootLogger.level'
+        line: 'log4j2.rootLogger.level = WARN'
+
+    - name: Change log4j level for runtime container
+      lineinfile:
+        path: "{{ talend_runtime_path }}/etc/org.ops4j.pax.logging.cfg"
+        regexp: '^log4j2.rootLogger.level'
+        line: 'log4j2.rootLogger.level = WARN'
+
+    - name: Update talend-releases mvn artifactory repository in runtime
+      lineinfile:
+        path: "{{ talend_runtime_path }}/etc/org.ops4j.pax.url.mvn.cfg"
+        regexp: '^    http://admin:Talend123@localhost:8081/repository/releases@id=tesb.release,'
+        line: '    https://{{ arti_talend_user }}:{{ arti_talend_pass }}@artifactory.example.com/artifactory/talend-releases@id=Talend-Releases,\'
+
+    - name: Update talend-snapshots mvn artifactory repository in runtime
+      lineinfile:
+        path: "{{ talend_runtime_path }}/etc/org.ops4j.pax.url.mvn.cfg"
+        regexp: '^    http://admin:Talend123@localhost:8081/repository/snapshots@snapshots@id=tesb.snapshot,'
+        line: '    https://{{ arti_talend_user }}:{{ arti_talend_pass }}@artifactory.example.com/artifactory/talend-snapshots@id=Talend-Snapshots, \'
+
+    - name: Update maven central mvn artifactory repository in runtime
+      lineinfile:
+        path: "{{ talend_runtime_path }}/etc/org.ops4j.pax.url.mvn.cfg"
+        regexp: '^    https://repo1.maven.org/maven2@id=central'
+        line: '    https://artifactory.example.com/artifactory/maven-release@id=Central-Mirror'
+
+        #     These are currently disabled after Talend Support recommendations. May need to revisit in future if needed
+        #    - name: Remove esb-ha-lock file.
+        #      file:
+        #        path: "/ephem/talend-tac/esb-ha-lock/lock"
+        #        state: absent
+        #
+        #    - name: Create lock directory
+        #      file:
+        #        path: "{{ talend_lock_dir }}"
+        #        state: directory
+        #        owner: "{{ talend_user }}"
+        #        group: "{{ talend_group }}"
+        #
+        #    - name: Enable filesystem lock for karaf
+        #      blockinfile:
+        #        path: "{{ talend_runtime_path }}/etc/system.properties"
+        #        regexp: '^# HA/Lock configuration'
+        #        insertafter: true
+        #        block: |
+        #          karaf.lock=true
+        #          karaf.lock.class=org.apache.karaf.main.lock.SimpleFileLock
+        #          karaf.lock.delay={{ talend_lock_delay }}
+        #          karaf.lock.level={{ talend_lock_level }}
+        #          karaf.lock.dir={{ talend_lock_dir }}
+
+    - name: Stop talend runtime container
+      systemd:
+        name: talend-runtime-7.3.1
+        state: stopped
+
+    - name: Recursively change ownership of a {{ talend_runtime_path }}
+      file:
+        path: "{{ talend_runtime_path }}"
+        state: directory
+        recurse: true
+        mode: '0755'
+        owner: "{{ talend_user }}"
+        group: "{{ talend_group }}"
+
+    - name: Start talend runtime container
+      systemd:
+        name: "{{ talend_runtime_service }}"
+        state: started
+
+        # RT 2022 Full Install finished
+        #  # RT 2023 patch install on top of RT 2022 full install START
+        #
+        #  - name: Stop talend runtime container
+        #    systemd:
+        #      name: talend-runtime-7.3.1
+        #      state: stopped
+        #
+        #  - name: Check for 2023 RT patch exist.
+        #    stat:
+        #      path: "{{ installer_dir }}/container"
+        #    register: esb_runtime_rt_2023_exploded_patch_folder
+        #
+        #  - name: Copy 2023 RT patch bin into ESB runtime
+        #    shell: "cp {{ installer_dir }}/container/bin/* {{ talend_runtime_path }}/bin/"
+        #    when: esb_runtime_rt_2023_exploded_patch_folder.stat.exists
+        #
+        #  - name: Copy 2023 RT patch bin into ESB runtime
+        #    shell: "cp -a {{ installer_dir }}/container/patches {{ talend_runtime_path }}/"
+        #    when: esb_runtime_rt_2023_exploded_patch_folder.stat.exists
+        #
+        #  - name: Recursively change ownership of a {{ talend_runtime_path }}
+        #    file:
+        #      path: "{{ talend_runtime_path }}"
+        #      state: directory
+        #      recurse: true
+        #      mode: '0777'
+        #      owner: "{{ talend_user }}"
+        #      group: "{{ talend_group }}"
+        #
+        #  - name: Start talend runtime container
+        #    systemd:
+        #      name: "{{ talend_runtime_service }}"
+        #      state: started
+        #
+        #
+        #  # We couldn't run 2023 patch.sh script directly from ansible due to the way the runtime tools like bin/client and bin/ trun works. We cannt pass input commands or files as suffix but need to feed these tools by sourcing
+        #  - name: Wait for Runtime client can connect to the instance
+        #    shell: "{{ talend_runtime_path }}/bin/client -u {{ tesb_user }} -p {{ tesb_password }}"
+        #    register: result
+        #    until: result.stdout.find("tadmin@trun") != -1
+        #    retries: 5
+        #    delay: 20
+        #    become: true
+        #    become_user: "{{ talend_user }}"
+        #
+        #
+        #  - name: Apply 2023 RT patch (patch01.commands)
+        #    shell: "source /etc/profile.d/talend-env.sh && echo '' > {{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/.status && cat {{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/patch01.commands | {{ talend_runtime_path }}/bin/client -u {{ tesb_user }} -p {{ tesb_password }}"
+        #    become: true
+        #    become_user: "{{ talend_user }}"
+        #
+        #  - name: Check the 2023 patch01 progress
+        #    wait_for:
+        #      path: "{{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/.status"
+        #      search_regex: "state"
+        #
+        #  - name: Check if state=repeating
+        #    shell: "grep repeating {{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/.status"
+        #    register: patch_install_status
+        #    ignore_errors: true
+        #
+        #  - name: Apply 2023 RT patch02.commands when patch01.commands return status as state=repeating
+        #    shell: "source /etc/profile.d/talend-env.sh && echo '' > {{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/.status && sleep 60 && cat {{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/patch02.commands | {{ talend_runtime_path }}/bin/client -u {{ tesb_user }} -p {{ tesb_password }}"
+        #    become: true
+        #    become_user: "{{ talend_user }}"
+        #    when: patch_install_status.stdout.find("state=repeating") != -1
+        #
+        #  - name: Check the 2023 patch02 progress
+        #    wait_for:
+        #      path: "{{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/.status"
+        #      search_regex: "state"
+        #    when: patch_install_status.stdout.find("state=repeating") != -1
+        #
+        #  - name: Restart job controller bundle
+        #    shell: "echo 'bundle:restart sam-agent org.talend.esb.job.controller' | {{ talend_runtime_path }}/bin/client -u {{ tesb_user }} -p {{ tesb_password }}"
+        #    become: true
+        #    become_user: "{{ talend_user }}"
+        #
+        #  - name: Uninstall patch bundle
+        #    shell: "echo 'bundle:uninstall org.talend.esb.ee.patch.talend-esb-patch' | {{ talend_runtime_path }}/bin/client -u {{ tesb_user }} -p {{ tesb_password }}"
+        #    become: true
+        #    become_user: "{{ talend_user }}"
+        #
+        #  - name: Check if Patch 2023 failed (state=error)
+        #    shell: "grep error {{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/.status"
+        #    register: patch_install_status
+        #    ignore_errors: true
+        #
+        #  - name: Fail ansible when 2023 patch install fails
+        #    fail:
+        #      msg: "RT 2023 Patch install failed. please check patch install logs from {{ talend_runtime_path }}/patches/{{ talend_runtime_incremental_patch_folder }}/logs folder"
+        #    when: patch_install_status.stdout.find("state=error") != -1
+        #
+        #  - name: Stop talend runtime container
+        #    systemd:
+        #      name: talend-runtime-7.3.1
+        #      state: stopped
+        #
+        #  - name: Recursively change ownership of a {{ talend_runtime_path }}
+        #    file:
+        #      path: "{{ talend_runtime_path }}"
+        #      state: directory
+        #      recurse: true
+        #      mode: '0755'
+        #      owner: "{{ talend_user }}"
+        #      group: "{{ talend_group }}"
+        #
+        #  - name: Remove Runtime cache
+        #    file:
+        #      dest: "{{ talend_runtime_path }}/data/"
+        #      state: absent
+        #
+        #  - name: Start talend runtime container
+        #    systemd:
+        #      name: "{{ talend_runtime_service }}"
+        #      state: started
+
+        # RT 2023 patch install on top of RT 2022 full install END
+
+  rescue:
+    - name: Failure message
+      fail:
+        msg: ESB Runtime install failed multiple times
+      when: esb_runtime_retry_count | int == 5
+
+    - name: Set flag to indicate reinstalling esb
+      set_fact:
+        esb_runtime_reinstall: "1"
+
+    - name: debug message
+      debug:
+        msg: "Retry ESB Runtime failed install"
+
+    - include_tasks: 12_esb_runtime.yml
+
+
+# enable SSL in Runtime
+- name: enable SSL config in TalendJobServer.properties for Runtime
+  lineinfile:
+    path: "{{ talend_runtime_path }}/etc/org.talend.remote.jobserver.server.cfg"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backrefs: true
+    backup: true
+  with_items:
+    - {regexp: "org.talend.remote.jobserver.server.TalendJobServer.USE_SSL=false", line: "org.talend.remote.jobserver.server.TalendJobServer.USE_SSL=true"}
+    - {regexp: "^#org.talend.remote.server.ssl.keyStore=", line: "org.talend.remote.server.ssl.keyStore={{ cert_import_path }}/{{ runtime_cert_filename }}.jks"}
+    - {regexp: "^#org.talend.remote.server.ssl.keyStorePassword=", line: "org.talend.remote.server.ssl.keyStorePassword={{ talend_server_jks_pw }}"}
+  notify:
+    - restart talend-tac
+  no_log: true
+
+
+- name: enable SSL config for Admin in Runtime
+  lineinfile:
+    path: "{{ talend_runtime_path }}/etc/org.ops4j.pax.web.cfg"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backrefs: true
+    backup: true
+  with_items:
+    - {regexp: "^org.ops4j.pax.web.ssl.keystore=", line: "org.ops4j.pax.web.ssl.keystore={{ cert_import_path }}/{{ runtime_cert_filename }}.jks"}
+    - {regexp: "^org.ops4j.pax.web.ssl.password=", line: "org.ops4j.pax.web.ssl.password={{ talend_server_jks_pw }}"}
+    - {regexp: "^org.ops4j.pax.web.ssl.keypassword=", line: "org.ops4j.pax.web.ssl.keypassword={{ talend_server_jks_pw }}"}
+  notify:
+    - restart talend-tac
+  no_log: true
+
+
+# Folder permissions {{ talend_efs_tac_mount }}
+- name: Ensure notification_listener folder have enough permissions.
+  file:
+    path: "{{ project_dir }}/data/logs/notification_listener"
+    state: directory
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    recurse: true
+    mode: 0755
+
+# Download and copy oracle jdbc connection plugin library
+- name: Download the oracle jdbc jar from artifactory to {{ talend_runtime_path }}/deploy
+  get_url:
+    url: "{{ oracle_jdbc_url }}"
+    force: true
+    dest: "{{ talend_runtime_path }}/deploy"
+    validate_certs: false
+    mode: '0755'
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+  changed_when: false

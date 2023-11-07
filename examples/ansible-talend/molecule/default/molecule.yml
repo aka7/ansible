@@ -1,0 +1,24 @@
+---
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: docker
+platforms:
+  - name: ansible-talend-tac
+    registry:
+      url:
+    image: artifactory.example.com/rhel8:1.0.0
+    pre_build_image: true
+    command: /usr/sbin/init
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    privileged: true
+verifier:
+  name: testinfra
+  options:
+    verbose: true
+lint: |
+  set -e
+  yamllint .
+  ansible-lint .

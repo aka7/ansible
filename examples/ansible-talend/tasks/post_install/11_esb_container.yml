@@ -1,0 +1,241 @@
+---
+- name: Source talend-env.sh to set JAVA_HOME before ESB install to fix JAVA_HOME=null
+  shell: |
+    source /etc/profile.d/talend-env.sh
+    echo $JAVA_HOME
+  register: java_home
+
+# - name: If reinstalling, stop container-app service if running
+#  systemd:
+#    name: "{{ talend_container_app_service }}"
+#    state: stopped
+#  ignore_errors: true
+#
+# - name: If reinstalling, stop runtime service if running
+#  systemd:
+#    name: "{{ talend_runtime_service }}"
+#    state: stopped
+#  ignore_errors: true
+
+
+# CONTAINER APP CONFIG STARTS
+
+
+- name: ESB install as a block of tasks to retry if karaf configuration fails
+  block:
+    - name: Increment the retry count
+      set_fact:
+        esb_retry_count: "{{ 0 if esb_retry_count is undefined else esb_retry_count | int + 1 }}"
+
+    - name: Check for existing ESB container-app install.
+      stat:
+        path: "{{ talend_container_orig_path }}"
+      register: esb_container_orig_dir
+
+    - name: Remove esb container  folder before patching
+      command: "mv {{ talend_container_orig_path }} {{ talend_container_orig_path }}-baseinstall"
+      when: esb_container_orig_dir.stat.exists and esb_reinstall is not defined
+
+    - name: Check for existing ESB container-app install.
+      stat:
+        path: "{{ talend_container_app_path }}"
+      register: esb_container_app_dir
+
+    - name: Remove esb container app folder before patching
+      file:
+        path: "{{ talend_container_app_path }}"
+        state: absent
+      when: esb_container_app_dir.stat.exists and esb_reinstall is not defined
+
+    - name: Create esb container folders before patching
+      file:
+        path: "{{ talend_container_app_path }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ talend_user }}"
+        group: "{{ talend_group }}"
+      ignore_errors: true # noqa: ignore-errors
+      when: esb_reinstall is not defined
+
+    #  Using ansible copy module here takes 25 minutes, therefore using shell cp which takes seconds
+    - name: Copy Runtime full install patch into ESB container-app
+      shell: "cp -a {{ installer_dir }}/{{ talend_runtime_full_install_patch }}/* {{ talend_container_app_path }}/"
+      when: esb_reinstall is not defined
+
+    - name: Recursively change ownership of a {{ talend_container_app_path }}
+      file:
+        path: "{{ talend_container_app_path }}"
+        state: directory
+        recurse: true
+        mode: '0755'
+        owner: "{{ talend_user }}"
+        group: "{{ talend_group }}"
+
+    - name: Create trun initialisation script for container-app
+      template:
+        src: "{{ item }}.j2"
+        dest: "{{ talend_container_app_path }}/{{ item }}"
+        mode: '0755'
+        owner: "{{ talend_user }}"
+        group: "{{ talend_group }}"
+      vars:
+        trun_service_name: "{{ talend_container_app_service }}"
+        trun_service_display: "Talend-ESB-Container-APP"
+        trun_service_desc: "Talend ESB Application Container"
+        trun_config_script_version: 1
+      with_items:
+        - trun.init-app
+        - trun.start-el
+
+    - name: Check for existing container app service
+      stat:
+        path: "{{ talend_container_app_path }}/bin/{{ talend_container_app_service }}.service"
+      register: container_app_service_stat
+
+    - name: Run karaf trun initialisation for container-app
+      shell: "cat {{ talend_container_app_path }}/trun.init-app | {{ talend_container_app_path }}/bin/trun"
+      register: result
+      until: result.stdout.find("service {{ talend_container_app_service }}-service start") != -1
+      retries: 5
+      delay: 5
+      when: not container_app_service_stat.stat.exists
+
+    - name: Update JAVA_HOME in container-app wrapper config file
+      lineinfile:
+        path: "{{ talend_container_app_path }}/etc/{{ talend_container_app_service }}-wrapper.conf"
+        regexp: '^set.default.JAVA_HOME='
+        line: 'set.default.JAVA_HOME={{ java_home.stdout }}'
+
+    - name: Remove maxmemory parameter
+      lineinfile:
+        path: "{{ talend_container_app_path }}/etc/{{ talend_container_app_service }}-wrapper.conf"
+        regexp: '^wrapper.java.maxmemory='
+        line: '#wrapper.java.maxmemory=512'
+
+    - name: Configure Additional Memory Parameter
+      lineinfile:
+        path: "{{ talend_container_app_path }}/etc/{{ talend_container_app_service }}-wrapper.conf"
+        insertafter: '^wrapper.java.additional.14='
+        line: 'wrapper.java.additional.15=-Xmx{{ esb_runtime_max_memory }}'
+
+    - name: Mitigate log4j vulnerabilities in Container App (CVE-2021-045046 & CVE-2021-45105)
+      # Note: this may be removed once log4j has been patched
+      # See here: https://help.talend.com/r/EeTpT8r7xmeq1HtTGQBqGA/xjI7K_ftIc2h4gQL9S_CQw
+      lineinfile:
+        path: "{{ talend_container_app_path }}/etc/{{ talend_container_app_service }}-wrapper.conf"
+        insertafter: '^wrapper.java.additional.15='
+        line: wrapper.java.additional.16=-Dlog4j2.formatMsgNoLookups=true
+
+    - name: Change log4j level for container-app
+      lineinfile:
+        path: "{{ talend_container_app_path }}/etc/org.ops4j.pax.logging.cfg"
+        regexp: '^log4j2.rootLogger.level'
+        line: 'log4j2.rootLogger.level = WARN'
+
+    - name: Update talend-releases mvn artifactory repository
+      lineinfile:
+        path: "{{ talend_container_app_path }}/etc/org.ops4j.pax.url.mvn.cfg"
+        regexp: '^    http://admin:Talend123@localhost:8081/repository/releases@id=tesb.release,'
+        line: '    https://{{ arti_talend_user }}:{{ arti_talend_pass }}@artifactory.example.com/artifactory/talend-releases@id=Talend-Releases,\'
+
+    - name: Update talend-snapshots mvn artifactory repository
+      lineinfile:
+        path: "{{ talend_container_app_path }}/etc/org.ops4j.pax.url.mvn.cfg"
+        regexp: '^    http://admin:Talend123@localhost:8081/repository/snapshots@snapshots@id=tesb.snapshot,'
+        line: '    https://{{ arti_talend_user }}:{{ arti_talend_pass }}@artifactory.example.com/artifactory/talend-snapshots@id=Talend-Snapshots, \'
+
+    - name: Update maven central mvn artifactory repository
+      lineinfile:
+        path: "{{ talend_container_app_path }}/etc/org.ops4j.pax.url.mvn.cfg"
+        regexp: '^    https://repo1.maven.org/maven2@id=central'
+        line: '    https://artifactory.example.com/artifactory/maven-release@id=Central-Mirror'
+
+    - name: Run karaf trun start el services for container-app
+      shell: "cat {{ talend_container_app_path }}/trun.start-el | {{ talend_container_app_path }}/bin/trun 2>&1 | tee /tmp/talend-start1.log"
+
+    - name: Update run as user in container-app service
+      lineinfile:
+        path: "{{ talend_container_app_path }}/bin/{{ talend_container_app_service }}-service"
+        regexp: '^#RUN_AS_USER='
+        line: "RUN_AS_USER={{ talend_user }}"
+
+    - name: Update run as user in container-app systemd script
+      lineinfile:
+        path: "{{ talend_container_app_path }}/bin/{{ talend_container_app_service }}.service"
+        insertafter: '^\[Service\]'
+        line: "User={{ talend_user }}\nGroup={{ talend_group }}"
+
+    - name: Link to service file for container-app
+      file:
+        src: "{{ talend_container_app_path }}/bin/{{ talend_container_app_service }}.service"
+        dest: /etc/systemd/system/{{ talend_container_app_service }}.service
+        state: link
+
+    - name: Fix ownership of all talend files to ensure container-app runs correctly as talenduser # noqa: deprecated-command-syntax
+      command: "chown -R {{ talend_user }}.{{ talend_group }} {{ talend_base_dir }}"
+
+    - name: Ensure /var/lock/subsys have enough permissions.
+      file:
+        path: "/var/lock/subsys"
+        state: directory
+        mode: 0777
+
+    - name: Enable and start container-app service
+      systemd:
+        name: "{{ talend_container_app_service }}"
+        daemon_reload: true
+        enabled: true
+        state: started
+
+    - name: Restart container-app service to ensure karaf fully loaded
+      systemd:
+        name: "{{ talend_container_app_service }}"
+        state: restarted
+
+  rescue: 
+    - name: Failure message
+      fail:
+        msg: ESB install failed multiple times
+      when: esb_retry_count | int == 5
+
+    - name: Set flag to indicate reinstalling esb
+      set_fact:
+        esb_reinstall: "1"
+
+    - name: debug message
+      debug:
+        msg: "Retry ESB failed install"
+
+    - include_tasks: 11_esb_container.yml
+# enable SSL in container-app
+- name: enable SSL config in TalendJobServer.properties in container-app
+  lineinfile:
+    path: "{{ talend_container_app_path }}/etc/org.talend.remote.jobserver.server.cfg"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backrefs: true
+    backup: true
+  with_items:
+    - {regexp: "org.talend.remote.jobserver.server.TalendJobServer.USE_SSL=false", line: "org.talend.remote.jobserver.server.TalendJobServer.USE_SSL=true"}
+    - {regexp: "^#org.talend.remote.server.ssl.keyStore=", line: "org.talend.remote.server.ssl.keyStore={{ cert_import_path }}/{{ esb_cert_filename }}.jks"}
+    - {regexp: "^#org.talend.remote.server.ssl.keyStorePassword=", line: "org.talend.remote.server.ssl.keyStorePassword={{ talend_server_jks_pw }}"}
+  notify:
+    - restart talend-tac
+  no_log: true
+
+- name: enable SSL config for Admin in container-app
+  lineinfile:
+    path: "{{ talend_container_app_path }}/etc/org.ops4j.pax.web.cfg"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backrefs: true
+    backup: true
+  with_items:
+    - {regexp: "^org.ops4j.pax.web.ssl.keystore=", line: "org.ops4j.pax.web.ssl.keystore={{ cert_import_path }}/{{ esb_cert_filename }}.jks"}
+    - {regexp: "^org.ops4j.pax.web.ssl.password=", line: "org.ops4j.pax.web.ssl.password={{ talend_server_jks_pw }}"}
+    - {regexp: "^org.ops4j.pax.web.ssl.keypassword=", line: "org.ops4j.pax.web.ssl.keypassword={{ talend_server_jks_pw }}"}
+  notify:
+    - restart talend-tac
+  no_log: true
+
+# CONTAINER APP CONFIG ENDS

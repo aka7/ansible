@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# script to gather ec2 facts to be used by ansible 
+#
+set -o pipefail
+
+# Check if required programs are installed
+for cmd in curl jq awk base64; do
+    if ! command -v "$cmd" &>/dev/null; then
+        printf '%s\n' 'Error: %s is not installed.' "$cmd" >&2
+        exit 1
+    fi
+done
+
+## \function get_all_ec2_tags
+## \function-brief Retrieves all EC2 tags for the current instance as JSON.
+get_all_ec2_tags() {
+    local instance_id
+    local tags
+
+    instance_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+    if [[ -z "$instance_id" ]]; then
+        echo "Error: Unable to retrieve instance id."
+        return 1
+    fi
+
+    tags=$(aws ec2 describe-tags --filters "Name=resource-id,Values=$instance_id")
+    if [[ -z "$tags" ]]; then
+        echo "Error: Unable to retrieve EC2 tags."
+        return 1
+    fi
+
+    echo "$tags"
+}
+
+## \function set_ec2_tag_values_as_vars
+## \function-brief Set ec2 tag values as variables.
+set_ec2_tag_value_as_vars() {
+    local tags
+    tags=$(get_all_ec2_tags)
+
+    ## - Returns VPC tag value as variable
+    EC2_VPC_TAG=$(echo "$tags" | jq -r ".Tags[] | select(.Key==\"VPC\") | .Value")
+    if [[ -z "$EC2_VPC_TAG" ]]; then
+        echo "Error: Unable to retrieve VPC tag."
+        return 1
+    else
+        declare -g EC2_VPC_TAG
+    fi
+    
+    ## - Returns environment tag value as variable
+    EC2_ENV_TAG=$(echo "$tags" | jq -r ".Tags[] | select(.Key==\"Environment\") | .Value")
+    if [[ -z "$EC2_ENV_TAG" ]]; then
+        echo "Error: Unable to retrieve Environment tag."
+        return 1
+    else
+        declare -g EC2_ENV_TAG
+    fi
+
+    ## - Returns project tag value as variable
+    EC2_PROJECT_TAG=$(echo "$tags" | jq -r ".Tags[] | select(.Key==\"Project\") | .Value")
+    if [[ -z "$EC2_PROJECT_TAG" ]]; then
+        echo "Error: Unable to retrieve Project tag."
+        return 1
+    else
+        declare -g EC2_PROJECT_TAG
+    fi
+
+    ## - Returns programme tag value as variable
+    EC2_PROGRAMME_TAG=$(echo "$tags" | jq -r ".Tags[] | select(.Key==\"Programme\") | .Value")
+    if [[ -z "$EC2_PROGRAMME_TAG" ]]; then
+        echo "Error: Unable to retrieve Programme tag."
+        return 1
+    else
+        declare -g EC2_PROGRAMME_TAG
+    fi
+}
+
+pre() {
+    ## - `set_ec2_tag_value_as_vars` Sets necessary ec2 tag values as variables.
+    set_ec2_tag_value_as_vars
+}
+
+## \function main
+## \function-brief Executes the main part of the script, output in json format
+main() {
+    echo "{\"ENVIRONMENT\": \"$EC2_ENV_TAG\","
+    echo "\"VPC\": \"$EC2_VPC_TAG\",";
+    echo "\"PROJECT\": \"$EC2_PROJECT_TAG\","
+    echo "\"PROGRAMME\": \"$EC2_PROGRAMME_TAG\"";
+    echo "}";
+}
+
+#-----#
+# Run #
+#-----#
+
+# Only run if direct execution - added to support unit testing
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    pre "$@"
+    main
+fi

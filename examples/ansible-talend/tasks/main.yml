@@ -1,0 +1,133 @@
+---
+- name: Remove any previously created install lock file
+  file:
+    state: absent
+    path: "{{ talend_install_mutex_prefix }}_tac_{{ ec2_tag_Target }}"
+  when: not ci_cd or (post_install is not defined or post_install != '1')
+  changed_when: false
+
+- name: Remove any previously created post install lock file
+  file:
+    state: absent
+    path: "{{ talend_install_mutex_prefix }}_post_{{ ec2_tag_Target }}"
+  when: not ci_cd or (post_install is defined and post_install == '1')
+  changed_when: false
+
+- name: Load variables from vault
+  include_tasks: 0_vault_vars.yml
+  tags:
+    - add_ldap_users
+
+- name: Block of install tasks
+  block:
+    - name: Prerequisite Talend TAC
+      include_tasks: initial_install/1_prerequisite.yml
+      when: post_install is not defined or post_install != '1'
+
+    - name: Mount EFS folder
+      include_tasks: initial_install/2_efs.yml
+      when: (post_install is not defined or post_install != '1') and talend_efs_enabled is defined and talend_efs_enabled
+
+    - name: Other node wait for node 0 TAC install to finish
+      wait_for:
+        path: "{{ talend_install_mutex_prefix }}_tac_node0"
+        timeout: 2400
+      when: "ec2_tag_Target != 'node0' and (post_install is not defined or post_install != '1')"
+
+    - name: install Talend Administration Center
+      include_tasks: initial_install/3_install-tac.yml
+      when: post_install is not defined or post_install != '1'
+
+    - name: Configure SSL
+      include_tasks: initial_install/4_ssl.yml
+      when: post_install is not defined or post_install != '1'
+
+    - name: Configure git ssh
+      include_tasks: initial_install/5_configure_git_ssh.yml
+      when: (post_install is not defined or post_install != '1') and configure_projects is defined and configure_projects
+
+    - name: Create file to signify node has finished installing TAC
+      copy:
+        content: ""
+        dest: "{{ talend_install_mutex_prefix }}_tac_{{ ec2_tag_Target }}"
+        mode: '0755'
+      when: post_install is not defined or post_install != '1'
+      changed_when: false
+
+    - name: Configure /tmp
+      include_tasks: initial_install/6_remount_tmp.yml
+      when: post_install is not defined or post_install != '1'
+
+    - name: Other node wait for node 0 post install to finish
+      wait_for:
+        path: "{{ talend_install_mutex_prefix }}_post_node0"
+        timeout: 2400
+      when: "ec2_tag_Target != 'node0' and post_install is defined and post_install == '1'"
+
+    - name: Add api admin user
+      include_tasks: post_install/5_api_user.yml
+      when: post_install is defined and post_install == '1'
+
+    - name: Configure properties
+      include_tasks: post_install/6_configure.yml
+      when: post_install is defined and post_install == '1'
+
+    - name: Add initial ldap users
+      include_tasks: post_install/7_ldap_users.yml
+      when: post_install is defined and post_install == '1'
+      tags:
+        - add_ldap_users
+
+    - name: Create ESB virtual server in tac
+      include_tasks: post_install/9_virtual_server_esb.yml
+      when: post_install is defined and post_install == '1' and install_licensed_esb_runtime == "true"
+
+    - name: Create virtual servers in tac
+      include_tasks: post_install/9_virtual_server.yml
+      when: post_install is defined and post_install == '1' and register_jobserver
+
+    #     Separate ESB Container-app is disbled as this wasn't needed for MDR hence both esb & runtime are installed as part of post_install/12_esb_runtime.yml
+    #    - name: Configure  ESB Container-app
+    #      include_tasks: post_install/11_esb_container.yml
+    #      when: post_install is defined and post_install == '1' and install_licensed_esb_runtime is defined and install_licensed_esb_runtime == "true"
+
+    - name: Configure Runtime ESB
+      include_tasks: post_install/12_esb_runtime.yml
+      when: post_install is defined and post_install == '1' and install_licensed_esb_runtime is defined and install_licensed_esb_runtime == "true"
+
+    - name: Add ESB Runtime servers to TAC
+      include_tasks: post_install/8_register_js_esb.yml
+      when: post_install is defined and post_install == '1' and register_jobserver and install_licensed_esb_runtime == "true"
+
+    - name: Add Job servers to TAC
+      include_tasks: post_install/8_register_js.yml
+      when: post_install is defined and post_install == '1' and register_jobserver
+
+    - name: Add Job servers to virtual server in TAC
+      include_tasks: post_install/10_add_js_to_vs.yml
+      when: post_install is defined and post_install == '1' and register_jobserver
+
+    - name: Add projects
+      include_tasks: post_install/13_add_projects.yml
+      when: (post_install is defined and post_install == '1') and configure_projects is defined and configure_projects
+
+    - name: Add ESB runtimes to virtualserver
+      include_tasks: post_install/14_add_esb_to_vs.yml
+      when: (post_install is defined and post_install == '1') and install_licensed_esb_runtime is defined and install_licensed_esb_runtime == "true"
+
+    - name: Configure Tomcat
+      include_tasks: post_install/15_configure_tomcat.yml
+      when: post_install is defined and post_install == '1'
+
+    - name: Create file to signify node has finished post install
+      copy:
+        content: ""
+        dest: "{{ talend_install_mutex_prefix }}_post_{{ ec2_tag_Target }}"
+        mode: '0755'
+      when: post_install is defined and post_install == '1'
+      changed_when: false
+  when: not ci_cd
+
+- name: CI CD Pipline
+  include_tasks: ci_cd/ci_cd_pipeline.yml
+  when: ci_cd

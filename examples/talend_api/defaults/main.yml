@@ -1,0 +1,12 @@
+---
+base_path: /opt/talend_runner
+js_agent_user: jobscheduler
+js_agent_group: jobscheduler
+talend_js_command_port: "8000"
+talend_js_file_port: "8001"
+talend_js_monitoring_port: "8888"
+talend_js_message_port: "8555"
+talend_js_timeout_unknown_state: "120"
+talend_js_timeoutzone: "Europe/London"
+jobserver_reg_service: "jobserver-talend-register"
+self_register_js: "{{ true if ec2_tag_Role == 'job-server' else false }}"

@@ -1,0 +1,260 @@
+---
+# The following steps are needed for TAC service to start in SELinux enforcing mode on RHEL8
+- name: Copying the TAC SE policy module file
+  ansible.builtin.copy:
+    src: tac-policy.te
+    dest: /tmp/tac-policy.te
+    mode: "0644"
+
+- name: Generate TAC SELinux policy module file
+  ansible.builtin.command: "checkmodule -M -m -o tac-policy.mod tac-policy.te"
+  args:
+    creates: tac-policy.mod
+    chdir: /tmp
+
+- name: Generate TAC SELinux policy module file
+  ansible.builtin.command: "semodule_package -o tac-policy.pp -m tac-policy.mod"
+  args:
+    creates: tac-policy.pp
+    chdir: /tmp
+
+- name: Generate TAC SELinux policy module file
+  ansible.builtin.command: "semodule -i tac-policy.pp"
+  args:
+    chdir: /tmp
+
+# We need to remount the /tmp directory so that the Talend install can execute
+- name: Remount the /tmp directory with exec permissions
+  mount:
+    src: tmpfs
+    fstype: tmpfs
+    path: /tmp
+    state: mounted
+    opts: rw,nosuid,nodev,seclabel,exec
+
+- name: Ensure EBS mount directory exists.
+  file:
+    path: "/ephem"
+    state: directory
+    mode: 0755
+
+- name: Format EBS volume
+  filesystem:
+    dev: "/dev/nvme1n1"
+    fstype: "xfs"
+
+- name: Mount EBS
+  mount:
+    path: /ephem
+    src: /dev/nvme1n1
+    fstype: xfs
+    state: mounted
+
+- name: Ensure /data symlink exists to /ephem
+  file:
+    src: /ephem
+    dest: /data
+    state: link
+    force: true
+    mode: 0755
+
+- name: Ensure group {{ talend_group }} exists
+  group:
+    name: "{{ talend_group }}"
+    state: present
+
+- name: Create {{ talend_user }} user.
+  user:
+    name: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    home: "/home/talend"
+    createhome: true
+    shell: /bin/bash
+    state: present
+
+- name: Ensure group {{ node_admin_group }} exists
+  group:
+    name: "{{ node_admin_group }}"
+    state: present
+
+- name: Create {{ node_admin_user }} user.
+  user:
+    name: "{{ node_admin_user }}"
+    groups: "{{ node_admin_group }},{{ talend_group }}"
+    append: true
+    home: "{{ node_admin_user_home_dir }}"
+    createhome: true
+    shell: /bin/bash
+    state: present
+
+- name: Check for existing talend base dir
+  stat:
+    path: "{{ talend_base_dir }}"
+  register: base_dir
+
+- name: Ensure talend base dir exists
+  file:
+    path: "{{ talend_base_dir }}"
+    state: directory
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    mode: 0775
+  when: not base_dir.stat.exists
+
+- name: Check for existing install.
+  stat:
+    path: "{{ talend_tac_install_dir }}/tac"
+  register: tac_dir
+
+- name: Install required packages
+  yum:
+    name: "{{ talend_tac_required_packages }}"
+    state: present
+    validate_certs: false
+  register: installed_packages
+
+- name: Install required packages on rhel8+
+  yum:
+    name: "{{ required_rhel8_packages }}"
+    state: present
+    validate_certs: false
+  when:
+    - ansible_facts['distribution'] == "RedHat"
+    - ansible_facts['distribution_major_version'] >= '8'
+  register: rhel8_packages
+
+- name: Enable TLS1.0, TLS1.1 Setting in config java secuirty to allow userdomain01 TLS connection.
+  lineinfile:
+    path: "{{ jre_lib_sec_path }}/java.security"
+    backrefs: true
+    regexp: "^jdk.tls.disabledAlgorithms=(.*)TLSv1(.*)$"
+    line: "{{ \"jdk.tls.disabledAlgorithms=SSLv3, RC4, DES, MD5withRSA, \\ \" }}"
+    backup: true
+  no_log: false
+
+- name: Add JAVA_HOME env variables
+  template:
+    src: templates/talend-env.sh.j2
+    dest: /etc/profile.d/talend-env.sh
+    owner: root
+    group: "{{ talend_group }}"
+    mode: 0750
+
+- name: Check if installer dir exists
+  stat:
+    path: "{{ installer_dir }}"
+  register: installer_dir_stat
+
+- name: Ensure installer dir exists
+  file:
+    path: "{{ installer_dir }}"
+    state: directory
+    mode: 0775
+  when: not installer_dir_stat.stat.exists
+
+- name: Check if installer zip exists
+  stat:
+    path: "{{ installer_dir }}/{{ installer_zip }}"
+  register: installer_zip_stat
+
+- name: Download Talend installer zip from S3 {{ installer_bucket_ap_arn }}
+  command: "aws s3 --region eu-west-2 cp s3://{{ installer_bucket_ap_arn }}/{{ installer_zip }} {{ installer_dir }}/{{ installer_zip }}"
+  when: not installer_zip_stat.stat.exists 
+
+- name: Check if installer dist exists
+  stat:
+    path: "{{ installer_dir }}/{{ installer_dist }}"
+  register: installer_dist_stat
+
+- name: Download Talend installer dist from S3 {{ installer_bucket_ap_arn }}
+  command: "aws s3 --region eu-west-2 cp s3://{{ installer_bucket_ap_arn }}/{{ installer_dist_with_version }} {{ installer_dir }}/{{ installer_dist }}"
+  when: not installer_dist_stat.stat.exists  
+
+- name: Check if Talend license exists
+  stat:
+    path: "{{ talend_base_dir }}/{{ talend_license }}"
+  register: talend_license_stat
+
+- name: Download Talend license (encrypted) from S3 {{ installer_bucket_ap_arn }}
+  command: "aws s3 --region eu-west-2 cp s3://{{ installer_bucket_ap_arn }}/{{ talend_license }}-V{{ talend_version }}.enc {{ talend_base_dir }}/{{ talend_license }}.enc"
+  when: not talend_license_stat.stat.exists 
+
+- name: decrypt talend license
+  command:
+    cmd: "openssl enc -aes-256-cbc -md md5 -d -in {{ talend_license }}.enc -out {{ talend_license }} -pass pass:{{ license_enc_pw }}"
+  args:
+    chdir: "{{ talend_base_dir }}"
+    creates: "{{ talend_base_dir }}/{{ talend_license }}"
+  when: not talend_license_stat.stat.exists 
+  no_log: true
+
+- name: Check if Talend patch exists
+  stat:
+    path: "{{ installer_dir }}/{{ talend_patch }}"
+  register: talend_patch_stat
+
+- name: Download Talend patch from S3 {{ installer_bucket_ap_arn }}
+  command: "aws s3 --region eu-west-2 cp s3://{{ installer_bucket_ap_arn }}/{{ talend_patch }} {{ installer_dir }}/{{ talend_patch }}"
+  when: not talend_patch_stat.stat.exists
+
+- name: Unzip talend installer & patch
+  unarchive:
+    src: "{{ installer_dir }}/{{ item }}"
+    dest: "{{ installer_dir }}"
+    mode: '0755'
+    remote_src: true
+  with_items:
+    - "{{ installer_zip }}"
+    - "{{ talend_patch }}"
+
+- name: Check if Talend Runtime full install patch exists
+  stat:
+    path: "{{ installer_dir }}/{{ talend_runtime_full_install_patch_ext }}"
+  register: talend_runtime_full_install_patch_stat
+
+- name: Download Talend patch from S3 {{ installer_bucket_ap_arn }}
+  command: "aws s3 --region eu-west-2 cp s3://{{ installer_bucket_ap_arn }}/{{ talend_runtime_full_install_patch_ext }} {{ installer_dir }}/{{ talend_runtime_full_install_patch_ext }}"
+  when: not talend_runtime_full_install_patch_stat.stat.exists
+
+- name: Check if Talend Runtime incremental patch exists
+  stat:
+    path: "{{ installer_dir }}/{{ talend_runtime_incremental_patch_ext }}"
+  register: talend_runtime_incremental_patch_stat
+
+- name: Download Talend patch from S3 {{ installer_bucket_ap_arn }}
+  command: "aws s3 --region eu-west-2 cp s3://{{ installer_bucket_ap_arn }}/{{ talend_runtime_incremental_patch_ext }} {{ installer_dir }}/{{ talend_runtime_incremental_patch_ext }}"
+  when: not talend_runtime_incremental_patch_stat.stat.exists 
+
+- name: Unzip talend installer & patch
+  unarchive:
+    src: "{{ installer_dir }}/{{ item }}"
+    dest: "{{ installer_dir }}"
+    mode: '0755'
+    remote_src: true
+  with_items:
+    - "{{ talend_runtime_full_install_patch_ext }}"
+    - "{{ talend_runtime_incremental_patch_ext }}"
+
+- name: Add the install config
+  template:
+    src: templates/install_config/talend_tac_install_config.txt.j2
+    dest: "{{ installer_dir }}/talend_tac_install_config.txt"
+    owner: root
+    mode: 0750
+  changed_when: false
+
+- name: Download the mysql jdbc jar from artifactory
+  get_url:
+    url: "{{ mysql_jdbc_url }}"
+    force: true
+    dest: "{{ talend_base_dir }}"
+    validate_certs: false
+  changed_when: false
+
+- name: Recursively change ownership of a {{ installer_dir }}
+  file:
+    path: "{{ installer_dir }}"
+    state: directory
+    recurse: true
+    mode: '0755'
+  when: not installer_dir_stat.stat.exists

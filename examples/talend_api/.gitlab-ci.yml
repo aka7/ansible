@@ -1,0 +1,77 @@
+---
+include:
+  - 'https:///gitlab-ci-snippets/-/raw/v3.0.0/ansible.yml'
+  - 'https:///gitlab-ci-snippets/-/raw/v3.0.0/linting.yml'
+  - 'https:///gitlab-ci-snippets/-/raw/v3.0.0/release.yml'
+  - 'https:///gitlab-ci-snippets/-/raw/v3.0.0/validate-version.yml'
+
+stages:
+  - 'verify'
+  - 'release'
+variables:
+  NO_PROXY: "\
+    s3.eu-west-2.amazonaws.com,\
+    s3.dualstack.eu-west-2.amazonaws.com,\
+    169.254.169.254"
+
+default:
+  tags:
+    - 'platform_shared'
+
+run-ansible-lint:
+  extends: ['.ansible-lint']
+  stage: 'verify'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - '**/*.yaml'
+        - '**/*.yml'
+
+run-ansible-molecule-tests:
+  extends: ['.ansible-molecule']
+  stage: 'verify'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - '**/*.yaml'
+        - '**/*.yml'
+  variables:
+    DOCKER_HOST: 'unix:///run/podman/podman.sock'
+
+lint-markdown-files:
+  extends: ['.linting-markdown']
+  stage: 'verify'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - '**/*.md'
+
+lint-yaml-files:
+  extends: ['.linting-yaml']
+  stage: 'verify'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - '**/*.yaml'
+        - '**/*.yml'
+
+validate release:
+  extends: ['.validate-version']
+  stage: 'verify'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+prepare release:
+  extends: ['.release-prepare']
+  stage: 'release'
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+gitlab release:
+  extends: ['.release-gitlab']
+  stage: 'release'
+  needs:
+    - job: 'prepare release'
+      artifacts: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

@@ -1,0 +1,66 @@
+---
+.release-prepare:
+  image:
+    name: base-alpine:latest
+    entrypoint: ['']
+  script:
+    - set -euo pipefail
+    - VERSION=$(tr -d '[:space:]' < version.txt)
+    - echo "VERSION=${VERSION}" >> variables.env
+    - echo "TAG_VERSION=v${VERSION}" >> variables.env
+  artifacts:
+    reports:
+      dotenv: 'variables.env'
+
+.release-artifactory:
+  image:
+    name: base-rhel7:latest
+    entrypoint: ['']
+  script:
+    - set -euo pipefail
+    - TAR_DIR=$(mktemp -d)
+    - TAR_FILE="${TAR_DIR}/${CI_PROJECT_NAME}.${VERSION}.tar.gz"
+    - ARTIFACTORY_TARGET_PATH="https:///<url>//ansible-roles/${CI_PROJECT_NAME}/"
+    - tar --exclude .git -vczf "$TAR_FILE" .
+    - curl -k -u "${ARTIFACTORY_ACCESS_SUBJECT}:${ARTIFACTORY_ACCESS_TOKEN}" -T "$TAR_FILE" "$ARTIFACTORY_TARGET_PATH"
+    - LATEST_TAR_FILE="${TAR_DIR}/${CI_PROJECT_NAME}.latest.tar.gz"
+    - mv "$TAR_FILE" "$LATEST_TAR_FILE"
+    - curl -k -u "${ARTIFACTORY_ACCESS_SUBJECT}:${ARTIFACTORY_ACCESS_TOKEN}" -T "$LATEST_TAR_FILE" "$ARTIFACTORY_TARGET_PATH"
+
+.release-gitlab:
+  image: <url>/dpd-release-cli:0.0.1
+  script:
+    - echo "running release for ${TAG_VERSION}"
+  release:
+    name: '$TAG_VERSION'
+    tag_name: '$TAG_VERSION'
+    description: 'Release: $TAG_VERSION'
+
+# creates a new tag in gitlab using semantic releasing
+.changelog:
+  image: artifactory.local/docker-local/toolbox/commit-and-tag-version:latest
+  script:
+    - touch VERSION.md
+    - commit-and-tag-version
+    - echo "VERSION=$(cat VERSION.md)" > version.env
+    - cat CHANGELOG.md
+  artifacts:
+    paths:
+      - CHANGELOG.md
+    reports:
+      dotenv: version.env
+
+# creates a new release in gitlab using the tag created in the .changelog stage
+.gitlab-release:
+  image: artifactory.local/gitlab-org/release-cli:latest
+  needs:
+    - job: changelog
+      artifacts: true
+  variables:
+    ADDITIONAL_CA_CERT_BUNDLE: ${EXAMPLE_CA_BUNDLE}
+  script:
+    - echo "Releasing ${VERSION}"
+  release:
+    tag_name: v${VERSION}
+    description: "CHANGELOG.md"
+

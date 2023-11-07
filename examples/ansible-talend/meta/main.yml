@@ -1,0 +1,24 @@
+---
+galaxy_info:
+  author: DEDG
+  description: This role initialises the Talend Administration Centre(TAC) which allows Talend Studio project managers to administrate users and projects and manage access to the remote repository.
+
+  issue_tracker_url: https://jira.tools.tax.service.gov.uk/browse/DEDP-7647
+  license: Internal use only
+  min_ansible_version: 2.7.0
+
+  platforms:
+    - name: RHEL
+      versions:
+        - 7
+
+  galaxy_tags:
+    - talend
+    - tac
+    - talendadministrationcentre
+    - dataintegration
+    - datamanagement
+    - cloudstorage
+    - bigdata
+
+dependencies: []

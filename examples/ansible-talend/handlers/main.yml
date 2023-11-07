@@ -1,0 +1,24 @@
+---
+- name: restart talend-tac service
+  service:
+    name: "talend-tac-{{ talend_version }}"
+    state: restarted
+  listen: "restart talend-tac"
+
+- name: Populate service facts to check for container-app service created yet
+  service_facts:
+  listen: "restart talend-tac"
+
+- name: restart talend-runtime service after TAC appears to fix port 8888 not being available
+  service:
+    name: "talend-runtime-{{ talend_version }}"
+    state: restarted
+  listen: "restart talend-tac"
+  when: "'talend-runtime-{{ talend_version }}.service' in services" # noqa: no-jinja-when 
+
+# - name: restart talend-container-app service
+#  service:
+#    name: "talend-container-app-{{ talend_version }}"
+#    state: restarted
+#  listen: "restart talend-tac"
+#  when: "'talend-container-app-{{ talend_version }}.service' in services"

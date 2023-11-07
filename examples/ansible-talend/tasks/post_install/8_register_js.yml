@@ -1,0 +1,68 @@
+---
+# Construct list of jobserver based on the tag value.
+# if talend_jobservers_list is defined, use that, not template. way to override the default template approach.
+# This will allow flexibility to list mutiple jobserver dns address instead index
+ - name: set fact talend JS
+   set_fact:
+     talend_jobservers: "{{ (talend_jobservers | default([])) + [talend_jobservers_template] }}"
+   with_sequence: "start=0 count={{ talend_jobserver_size|int }}"
+   when: talend_jobserver_list is not defined
+
+ - name: set fact talend JS (override)
+   set_fact:
+     talend_jobservers: "{{ talend_jobserver_list }}"
+   when: talend_jobserver_list is defined
+
+ - name: debug message
+   debug:
+     msg: "{{ talend_jobservers }}"
+
+ - name: List existing jobservers
+   uri:
+     url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+       '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+       '"actionName":"listServer"' +
+       '}' ) | b64encode }}
+     return_content: true
+     validate_certs: false
+     status_code: 200
+     timeout: 300
+   register: existing_jobservers
+   failed_when: existing_jobservers.json.returnCode is not defined or existing_jobservers.json.returnCode != 0
+
+ - name: Register jobservers
+   uri:
+     url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+       '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+       '"actionName":"addServer","active":true,"description":"Job server ' + item + '",' +
+       '"fileTransferPort":'+ talend_js_file_port + ',"host":"' + item + '",' +
+       '"label":"' + item | replace ('.','_') + '","monitoringPort":' + talend_js_monitoring_port + ',"commandPort":' + talend_js_command_port + ',"filePort":' + talend_js_file_port + ',' +
+       '"processMessagePort":' + talend_js_message_port + ',"timeOutUnknownState":'+ talend_js_timeout_unknown_state + ',"useSSL":true,"timezoneId":"Europe/London"' +
+       '}' ) | b64encode }}
+     validate_certs: false
+     return_content: true
+     status_code: 200
+     timeout: 300
+   register: this
+   with_items: "{{ talend_jobservers }}"
+   when: existing_jobservers.content.find('"host":"' + item + '"') == -1
+   failed_when: this.json.returnCode is not defined or this.json.returnCode != 0
+
+# TODO: update jobserver
+# - name: Update existing jobserver
+#   uri:
+#     url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+#       '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+#       '"actionName":"updateServer","id":' + talend_esb_server_id + ',"adminConsolePort":' + esb_runtime_admin_console_port + ',"commandPort":' + esb_runtime_command_port + ',' +
+#       '"description":"RUNTIME_ESB_' + (ec2_tag_Target | upper) + '","filePort":' + esb_runtime_file_port + ',"host":"' + (ansible_eth0['ipv4']['address']) + '",' +
+#       '"instance":"trun","isTalendRuntime":"true","label":"RUNTIME_ESB_' + (ec2_tag_Target | upper) + '",' +
+#       '"mgmtRegPort":' + esb_runtime_management_reg_port + ',"mgmtServerPort":' + esb_runtime_management_server_port + ',"monitoringPort":' + esb_runtime_monitoring_port + ',' +
+#       '"runtimePassword":"' + runtime_server_pass + '","runtimeUsername":"' + runtime_server_user + '","timeoutUnknownState":' + esb_runtime_timeout_unknown_state + ',' +
+#       '"timezoneId":"Europe/London","useSSL":true' +
+#       '}' ) | b64encode }}
+#     validate_certs: false
+#     return_content: true
+#     status_code: 200
+#   register: this
+#   when: existing_jobservers.content.find('"host":"' + (ansible_eth0['ipv4']['address']) + '"') == -1
+#   failed_when: this.json.returnCode is not defined or this.json.returnCode != 0

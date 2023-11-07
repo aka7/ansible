@@ -1,0 +1,56 @@
+---
+- name: Add stunnel repo
+  yum_repository:
+    name: stunnel
+    description: stunnel repo
+    file: stunnel
+    baseurl: https://artifactory.example.com/artifactory/stunnel
+    gpgcheck: false
+    enabled: true
+
+- name: Add amazon-efs-utils repo
+  yum_repository:
+    name: aws-efs
+    description: amazon efs utils repo
+    file: aws-efs
+    baseurl: https://artifactory.example.com/artifactory/amazon-efs-utils
+    gpgcheck: false
+    enabled: true
+
+- name: install stunnel 5.41 & aws-efs-utils
+  yum:
+    name: "{{ item }}"
+    state: latest # noqa: package-latest
+    validate_certs: false
+  with_items:
+    - stunnel
+    - amazon-efs-utils
+
+# This is needed for the efs mount to work in Rhel8
+- name: Symlink to python2
+  file:
+    src: /usr/bin/python2.7
+    dest: /usr/bin/python
+    state: link
+
+- name: Check for existing talend efs tac dir
+  stat:
+    path: "{{ talend_efs_tac_mount }}"
+  register: efs_tac_dir
+
+- name: Ensure talend efs tac dir exists
+  file:
+    path: "{{ talend_efs_tac_mount }}"
+    state: directory
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    mode: 0775
+  when: not efs_tac_dir.stat.exists
+
+- name: mount talend efs tac path
+  mount:
+    path: "{{ talend_efs_tac_mount }}"
+    src: "{{ talend_efs_server }}:{{ talend_efs_tac_path }}"
+    fstype: "{{ talend_mount_type }}"
+    opts: "{{ talend_mount_opts }}"
+    state: mounted

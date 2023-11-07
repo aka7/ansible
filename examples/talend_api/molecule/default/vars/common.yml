@@ -1,0 +1,9 @@
+env: "test_env"
+role: "test_role" 
+programme: "test_programme"
+product: "test_product"
+target: "test_target"
+component: "test_component"
+ec2_tag_Environment: "test_env"
+ec2_tag_Role: 'test_role'
+vault_namespace: 'test'

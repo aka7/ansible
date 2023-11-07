@@ -1,0 +1,82 @@
+---
+- name: List existing ESB tasks
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"listEsbTasks"' +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: existing_tasks
+  failed_when: existing_tasks.json.returnCode is not defined or existing_tasks.json.returnCode != 0
+
+- name: Init list of deploy task versions
+  set_fact:
+    deploy_task_versions: {}
+
+- name: Build list of deploy task versions
+  set_fact:
+    deploy_task_versions: "{{ deploy_task_versions | combine( {item.feature_name: item.version} ) }}"
+  loop: "{{ deploy_esb_tasks }}"
+
+- name: Init list of deploy task details
+  set_fact:
+    deploy_task_details: {}
+
+- name: Build list of deploy task details
+  set_fact:
+    deploy_task_details: "{{ deploy_task_details | combine( {item.feature_name: item} ) }}"
+  loop: "{{ deploy_esb_tasks }}"
+
+- name: Init list of existing task names
+  set_fact:
+    existing_task_names: []
+
+- name: Build list of existing task names
+  set_fact:
+    existing_task_names: "{{ existing_task_names + [ item.applicationName ] }}"
+  loop: "{{ existing_tasks.json.result }}"
+
+- name: Init list of task ids to remove
+  set_fact:
+    remove_task_ids: []
+
+- name: Build list of task ids to remove
+  set_fact:
+    remove_task_ids: "{{ remove_task_ids + [ item.id ] }}"
+  when: item.applicationName not in deploy_task_versions.keys()
+  loop: "{{ existing_tasks.json.result }}"
+
+- name: Init list of new tasks to add
+  set_fact:
+    new_tasks: []
+
+- name: Build list of new tasks to add
+  set_fact:
+    new_tasks: "{{ new_tasks + [ item ] }}"
+  when: item.feature_name not in existing_task_names
+  loop: "{{ deploy_esb_tasks }}"
+
+- name: Init list of tasks to update
+  set_fact:
+    update_tasks: []
+
+- name: Build list of tasks to update
+  set_fact:
+    update_tasks: "{{ update_tasks + [ { 'existing_task_id': item.id, 'task': deploy_task_details[item.applicationName] } ] }}"
+  when: item.applicationName in deploy_task_versions.keys() and deploy_task_versions[item.applicationName] != item.applicationVersion
+  loop: "{{ existing_tasks.json.result }}"
+
+- name: Remove tasks no longer needed
+  include_tasks: remove_esb_tasks.yml
+  loop: "{{ remove_task_ids }}"
+
+- name: Add new tasks
+  include_tasks: create_esb_tasks.yml
+  loop: "{{ new_tasks }}"
+
+- name: Update changed tasks
+  include_tasks: update_esb_tasks.yml
+  loop: "{{ update_tasks }}"

@@ -1,0 +1,15 @@
+#!/bin/bash
+# simple script to filter aws instances for a given account
+
+function usage
+{
+    echo "$0 <aws_account> [text]"
+    exit 1;
+}
+[ -z "$1" ] && usage
+
+if [ -z "$2" ]; then
+    aws-vault exec $1 -- aws elb describe-load-balancers
+else
+    aws-vault exec $1 -- aws elb describe-load-balancers | grep $2
+fi

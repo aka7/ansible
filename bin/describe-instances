@@ -1,0 +1,15 @@
+#!/bin/bash
+# simple script to filter aws instances for a given account
+
+function usage
+{
+    echo "$0 <aws_account> [text]"
+    exit 1;
+}
+[ -z "$1" ] && usage
+
+if [ -z "$2" ]; then
+    aws-vault exec $1 -- aws ec2 describe-instances --query 'Reservations[].Instances[].[ [Tags[?Key==`Name`].Value][0][0],PrivateIpAddress,InstanceId,LaunchTime,State.Name,Placement.AvailabilityZone,ImageId,[Tags[?Key==`Component`].Value][0][0],[Tags[?Key==`aws:autoscaling:groupName`].Value][0][0] ]' --output table
+else
+    aws-vault exec $1 -- aws ec2 describe-instances --query 'Reservations[].Instances[].[ [Tags[?Key==`Name`].Value][0][0],PrivateIpAddress,InstanceId,LaunchTime,State.Name,Placement.AvailabilityZone,ImageId,[Tags[?Key==`Component`].Value][0][0],[Tags[?Key==`aws:autoscaling:groupName`].Value][0][0] ]' --output table | grep $2
+fi

@@ -1,0 +1,101 @@
+---
+- name: Perform getent on passwd file
+  getent:
+    database: passwd
+    key: "{{ talend_user }}"
+    split: ":"
+
+- name: Create system fact for {{ talend_user }} home directory
+  set_fact:
+    talend_user_home_dir: "{{ getent_passwd[talend_user][4] }}"
+
+- name: Create .ssh directory for {{ talend_user }}
+  file:
+    dest: "{{ talend_user_home_dir }}/.ssh"
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    mode: 0700
+    state: directory
+
+- name: Create .ssh directory for {{ node_admin_user }}
+  file:
+    dest: "{{ node_admin_user_home_dir }}/.ssh"
+    owner: "{{ node_admin_user }}"
+    group: "{{ node_admin_group }}"
+    mode: 0700
+    state: directory
+
+- name: Create authorized_keys for {{ node_admin_user }}
+  copy:
+    dest: "{{ node_admin_user_home_dir }}/.ssh/authorized_keys"
+    content: "{{ node_admin_public_key }}"
+    owner: "{{ node_admin_user }}"
+    group: "{{ node_admin_group }}"
+    mode: 0600
+
+- name: Add {{ node_admin_user }} to oracle group
+  user:
+    name: "{{ node_admin_user }}"
+    groups: "{{ oracle_group }}"
+    append: true
+  when: oracle_group | length > 0
+
+- name: Add {{ talend_user }} to oracle group
+  user:
+    name: "{{ talend_user }}"
+    groups: "{{ oracle_group }}"
+    append: true
+  when: oracle_group | length > 0
+
+- name: Create project SSH private key
+  copy:
+    dest: "{{ talend_user_home_dir }}/.ssh/id_rsa_{{ item.name }}"
+    content: |
+      {{ lookup('vars', 'priv_key_' + item.name) }}
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    mode: 0600
+  with_items:
+    - "{{ projects }}"
+  when: projects is defined and projects|length > 0
+
+- name: Copy ssh config configuration per project
+  template:
+    src: sshconfig.j2
+    dest: "{{ talend_user_home_dir }}/.ssh/config"
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"
+    mode: 0640
+
+- name: Set known_hosts path
+  set_fact:
+    known_hosts_path: "{{ talend_user_home_dir }}/.ssh/known_hosts"
+
+- name: Create known_hosts file for {{ talend_user }} if it does not exist
+  copy:
+    content: ""
+    dest: "{{ known_hosts_path }}"
+    force: false
+    group: "{{ talend_group }}"
+    owner: "{{ talend_user }}"
+    mode: 0644
+
+- name: Load git RSA IDs into known_hosts for {{ talend_user }}
+  shell:
+    cmd: "/usr/bin/ssh-keyscan -t rsa {{ item.vcs_fqdn }} >> {{ known_hosts_path }}"
+  when: item.vcs_fqdn is defined and item.vcs_fqdn not in lookup('ansible.builtin.file', known_hosts_path)
+  with_items:
+    - "{{ projects }}"
+
+- name: Load default git RSA IDs into known_hosts for {{ talend_user }}
+  shell:
+    cmd: "/usr/bin/ssh-keyscan -t rsa {{ vcs_server }} >> {{ known_hosts_path }}"
+  when: vcs_server is defined and vcs_server not in lookup('ansible.builtin.file', known_hosts_path)
+
+- name: Umask Fix
+  file:
+    path: "{{ talend_user_home_dir }}/.ssh/known_hosts"
+    state: touch
+    mode: 0644
+    owner: "{{ talend_user }}"
+    group: "{{ talend_group }}"

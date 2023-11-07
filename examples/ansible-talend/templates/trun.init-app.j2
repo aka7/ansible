@@ -1,0 +1,4 @@
+feature:install -v wrapper
+source scripts/configureC{{ trun_config_script_version }}.sh
+wrapper:install -s AUTO_START -n {{ trun_service_name }} -d {{ trun_service_display }} -D "{{ trun_service_desc }}"
+system:shutdown -f

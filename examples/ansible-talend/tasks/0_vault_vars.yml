@@ -1,0 +1,50 @@
+---
+- name: Load DB details from vault if needed
+  include_tasks: vault_lookup.yml
+  with_items:
+    - {path: "{{ vault_mysql_path }}/rds", field: "host", variable_name: "talend_db_host"}
+    - {path: "{{ vault_mysql_path }}/rds", field: "username", variable_name: "talend_db_user"}
+    - {path: "{{ vault_mysql_path }}/rds", field: "password", variable_name: "talend_db_password"}
+  when: talend_db_host is not defined
+  tags:
+    - add_ldap_users
+
+- name: Load other secrets from vault
+  include_tasks: vault_lookup.yml
+  with_items:
+    - {path: "{{ vault_shared_path }}/license", field: "license_enc_pw", variable_name: "license_enc_pw"}
+    - {path: "{{ vault_shared_path }}/jks", field: "keystore_password", variable_name: "talend_server_jks_pw"}
+    - {path: "{{ vault_shared_path }}/tls/signed_wildcard", field: "cer", variable_name: "example_signed_cert"}
+    - {path: "{{ vault_shared_path }}/tls/signed_wildcard", field: "pem", variable_name: "example_signed_pem"}
+    - {path: "{{ vault_shared_path }}/ldap", field: "ldap_host", variable_name: "ldap_host"}
+    - {path: "{{ vault_shared_path }}/ldap", field: "ldap_default_full_dn_var", variable_name: "ldap_default_full_dn_var"}
+    - {path: "{{ vault_shared_path }}/ldap", field: "ldap_default_password", variable_name: "ldap_default_password"}
+    - {path: "{{ vault_shared_path }}/ldap", field: "ldap_default_bind_dn_var", variable_name: "ldap_default_bind_dn_var"}
+    - {path: "{{ vault_shared_path }}/ldap", field: "cacert", variable_name: "ldap_cacert"}
+    - {path: "{{ vault_shared_path }}/auth", field: "sec_admin_user", variable_name: "sec_admin_user"}
+    - {path: "{{ vault_shared_path }}/auth", field: "sec_admin_pass", variable_name: "sec_admin_pass"}
+    - {path: "{{ vault_shared_path }}/auth", field: "api_admin_user", variable_name: "api_admin_user"}
+    - {path: "{{ vault_shared_path }}/auth", field: "api_admin_pass", variable_name: "api_admin_pass"}
+    - {path: "{{ vault_shared_path }}/auth", field: "runtime_server_user", variable_name: "runtime_server_user"}
+    - {path: "{{ vault_shared_path }}/auth", field: "runtime_server_pass", variable_name: "runtime_server_pass"}
+    - {path: "{{ vault_shared_path }}/auth", field: "ldaps_cacerts_path", variable_name: "ldaps_cacerts_path"}
+    - {path: "{{ vault_shared_path }}/auth", field: "ldaps_cacerts_pass", variable_name: "ldaps_cacerts_pass"}
+    - {path: "{{ vault_shared_path }}/auth", field: "arti_talend_user", variable_name: "arti_talend_user"}
+    - {path: "{{ vault_shared_path }}/auth", field: "arti_talend_pass", variable_name: "arti_talend_pass"}
+    - {path: "kv/tac/ssh_keys/{{ node_admin_user }}", field: "public_key", variable_name: "node_admin_public_key"}
+
+- name: Load Artifactory Gateway secrets from vault
+  include_tasks: vault_lookup.yml
+  with_items:
+    - {path: "{{ vault_shared_path }}/auth", field: "artifactory_gateway_user", variable_name: "artifactory_gateway_user"}
+    - {path: "{{ vault_shared_path }}/auth", field: "artifactory_gateway_pass", variable_name: "artifactory_gateway_pass"}
+  when: artifactory_gateway is defined
+
+
+- name: Load other secrets from vault
+  include_tasks: vault_lookup.yml
+  with_items:
+    - "{{ projects }}"
+  when: configure_projects is defined and configure_projects
+  tags:
+    - add_ldap_users

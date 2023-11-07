@@ -1,0 +1,31 @@
+---
+- name: List existing projects
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"listProjects"' +
+      '}' ) | b64encode }}
+    return_content: true
+    validate_certs: false
+    status_code: 200
+    timeout: 300
+  register: existing_projects
+  failed_when: existing_projects.json.returnCode is not defined or existing_projects.json.returnCode != 0
+
+- name: create project
+  uri:
+    url: https://localhost:8443/org.talend.administrator/metaServlet?{{ ( '{' +
+      '"authUser":"' + api_admin_user + '","authPass":"' + api_admin_pass + '",' +
+      '"actionName":"createProject","projectName":"' + item.name + '",' +
+      '"projectGitLocation":"git@' + item.project_name | default(item.name) + '.' + item.url + '",' +
+      '"projectType":"' + item.type | default('DQ') + '",' +
+      '"storage":"git","addTechNameAtURL":"true"' +
+      '}' ) | b64encode }}
+    validate_certs: false
+    return_content: true
+    status_code: 200
+    timeout: 300
+  register: created_project
+  with_items: "{{ projects }}"
+  when: existing_projects.content.find('"label":"' + item.name + '"') == -1
+  failed_when: created_project.json.returnCode is not defined or created_project.json.returnCode != 0

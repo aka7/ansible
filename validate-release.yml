@@ -1,0 +1,17 @@
+.validate-version:
+  image:
+    name: runner-linters:0.0.1
+    entrypoint: ['']
+  script:
+    - set -euo pipefail
+    - echo 'Validating version in version.txt..'
+    - git fetch origin --tags
+    - VERSION=$(git tag -l "v$(tr -d '[:space:]' < version.txt)")
+    - |-
+      if [[ -z $VERSION ]]; then
+        echo "${VERSION} is a unique Git tag"
+      else
+        echo "${VERSION} already exists, version needs to be a unique Git tag"
+        exit 1
+      fi
+
